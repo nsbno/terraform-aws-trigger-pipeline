@@ -56,11 +56,12 @@ def lambda_handler(event, context):
         s3_filename,
     )
 
-    pipeline_trigger_expected_keys = ["SHA", "date", "activities_key"]
+    pipeline_trigger_expected_keys = ["SHA", "date", "name_prefix"]
     pipeline_trigger = get_content_from_s3(s3_bucket,s3_key,pipeline_trigger_expected_keys)
     source_code = f"s3://{s3_bucket}/{s3_prefix}/{pipeline_trigger['SHA']}.zip"
     logger.info("Using source code location '%s'", source_code)
-    activities_config = get_content_from_s3(s3_bucket,pipeline_trigger['activities_key'],"")
+    activities_config_key = f"{pipeline_trigger['name_prefix']}/activities.json"
+    activities_config = get_content_from_s3(s3_bucket,activities_config_key,"")
 
     try:
         for activityKey in activities_config["activities"]:
