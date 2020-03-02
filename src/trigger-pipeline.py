@@ -6,31 +6,26 @@ import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-def get_content_of_trigger_event_file(s3_bucket, s3_key):
-    expected_keys = ["SHA", "date", "activities_key"]
+def get_content_from_s3(s3_bucket,s3_key,expected_keys):
     try:
         s3 = boto3.resource("s3")
         obj = s3.Object(s3_bucket, s3_key)
         body = obj.get()["Body"].read().decode("utf-8")
-        pipeline_trigger = json.loads(body)
+        content = json.loads(body)
     except Exception:
         logger.exception(
             "Something went wrong when trying to load 's3://%s/%s' as JSON",
             s3_bucket,
             s3_key,
         )
-    if not all(key in pipeline_trigger for key in expected_keys):
+    if expected_keys != "" and not all(key in content for key in expected_keys):
         logger.error(
             "Expected trigger event file to have keys '%s', but found '%s'",
             expected_keys,
-            pipeline_trigger.keys(),
+            content.keys(),
         )
         raise Exception()
-
-    return pipeline_trigger
-
-def get_activities_config(s3_bucket,s3_key):
-
+    return content
 
 def lambda_handler(event, context):
     logger.info("Lambda started with input event '%s'", event)
@@ -61,10 +56,11 @@ def lambda_handler(event, context):
         s3_filename,
     )
 
-    pipeline_trigger = get_content_of_trigger_event_file(s3_bucket, s3_key)
+    pipeline_trigger_expected_keys = ["SHA", "date", "activities_key"]
+    pipeline_trigger = get_content_from_s3(s3_bucket,s3_key,pipeline_trigger_expected_keys)
     source_code = f"s3://{s3_bucket}/{s3_prefix}/{pipeline_trigger['SHA']}.zip"
     logger.info("Using source code location '%s'", source_code)
-    activities_config = get_activities_config(s3_bucket,pipeline_trigger['activities_key'])
+    activities_config = get_content_from_s3(s3_bucket,pipeline_trigger['activities_key'],"")
 
     try:
         for activityKey in activities_config["activities"]:
@@ -101,5 +97,5 @@ def lambda_handler(event, context):
     client.start_execution(
         stateMachineArn=state_machine,
         name=pipeline_trigger['SHA'] + '-' + time.strftime("%Y%m%d-%H%M%S"),
-        input=json.dumps(params),
+        input=json.dumps(activities_config),
     )
