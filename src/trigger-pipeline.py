@@ -34,7 +34,7 @@ def lambda_handler(event, context):
         boto3.client("sts").get_caller_identity().get("Account")
     )
 
-    state_machine = f"arn:aws:states:eu-west-1:{service_account_id}:stateMachine:aws-infrademo-state-machine"
+
 
     # tar s3 event og henter bucketnavn og filpath
     s3_bucket = event["Records"][0]["s3"]["bucket"]["name"]
@@ -58,45 +58,14 @@ def lambda_handler(event, context):
 
     pipeline_trigger_expected_keys = ["SHA", "date", "name_prefix"]
     pipeline_trigger = get_content_from_s3(s3_bucket,s3_key,pipeline_trigger_expected_keys)
-    source_code = f"s3://{s3_bucket}/{s3_prefix}/{pipeline_trigger['SHA']}.zip"
+    source_code = {'source_code': f"s3://{s3_bucket}/{s3_prefix}/{pipeline_trigger['SHA']}.zip"}
     logger.info("Using source code location '%s'", source_code)
-    activities_config_key = f"{pipeline_trigger['name_prefix']}/activities.json"
-    activities_config = get_content_from_s3(s3_bucket,activities_config_key,"")
-
-    try:
-        for activityKey in activities_config["activities"]:
-            activities_config["activities"][activityKey]["content"] = source_code
-
-            rolename = activities_config["activities"][activityKey]["task_role_arn"]
-            if "test" in activityKey:
-                activities_config["activities"][activityKey]["task_role_arn"] = (
-                        "arn:aws:iam::" + service_account_id + ":role/" + rolename
-                )
-
-            if "stage" in activityKey:
-                activities_config["activities"][activityKey]["task_role_arn"] = (
-                        "arn:aws:iam::" + service_account_id + ":role/" + rolename
-                )
-
-            if "prod" in activityKey:
-                activities_config["activities"][activityKey]["task_role_arn"] = (
-                        "arn:aws:iam::" + service_account_id + ":role/" + rolename
-                )
-
-            if "service" in activityKey:
-                activities_config["activities"][activityKey]["task_role_arn"] = (
-                        "arn:aws:iam::" + service_account_id + ":role/" + rolename
-                )
-
-    except Exception as e:
-        logger.exception(
-            "Failed when parsing json file for state config" + str(e)
-        )
 
     # starter codepipeline med input parametere
+    state_machine = f"arn:aws:states:eu-west-1:{service_account_id}:stateMachine:{pipeline_trigger['name_prefix']}-state-machine"
     client = boto3.client("stepfunctions")
     client.start_execution(
         stateMachineArn=state_machine,
         name=pipeline_trigger['SHA'] + '-' + time.strftime("%Y%m%d-%H%M%S"),
-        input=json.dumps(activities_config),
+        input=json.dumps(source_code)
     )

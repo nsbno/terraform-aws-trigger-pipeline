@@ -5,3 +5,6 @@ crash.log
 
 # InteliJ IDE
 .idea/
+
+# zipped lambdas
+src/*.zip

@@ -8,13 +8,13 @@ locals {
 
 data "archive_file" "lambda_infra_trigger_pipeline_src" {
   type        = "zip"
-  source_file = "${path.module}/../../lambda/infra_trigger_pipeline/main.py"
-  output_path = "${path.module}/../../lambda/infra_trigger_pipeline/bundle.zip"
+  source_file = "${path.module}/src/trigger-pipeline.py"
+  output_path = "${path.module}/src/trigger-pipeline.zip"
 }
 
 resource "aws_lambda_function" "infra_trigger_pipeline" {
   function_name    = "${var.name_prefix}-infra-trigger-pipeline"
-  handler          = "main.lambda_handler"
+  handler          = "trigger-pipeline.lambda_handler"
   role             = aws_iam_role.lambda_infra_trigger_pipeline_exec.arn
   runtime          = "python3.7"
   filename         = data.archive_file.lambda_infra_trigger_pipeline_src.output_path
@@ -33,30 +33,19 @@ resource "aws_iam_role_policy" "logs_to_infra_trigger_pipeline_lambda" {
   role   = aws_iam_role.lambda_infra_trigger_pipeline_exec.id
 }
 
-data "aws_iam_policy_document" "logs_for_lambda" {
-  statement {
-    effect    = "Allow"
-    actions   = ["logs:CreateLogGroup"]
-    resources = ["arn:aws:logs:${local.current_region}:${local.current_account_id}:*"]
-  }
-  statement {
-    effect = "Allow"
-    actions = [
-      "logs:CreateLogStream",
-      "logs:PutLogEvents"
-    ]
-    resources = [
-      "arn:aws:logs:${local.current_region}:${local.current_account_id}:log-group:/aws/lambda/${aws_lambda_function.infra_trigger_pipeline.function_name}*",
-    ]
-  }
-}
-
 data "aws_s3_bucket" "trigger_bucket" {
   bucket = var.artifact_bucket_name
 }
 
+resource "aws_lambda_permission" "allow_bucket" {
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.infra_trigger_pipeline.function_name
+  principal     = "s3.amazonaws.com"
+  source_arn    = data.aws_s3_bucket.trigger_bucket.arn
+}
+
 resource "aws_s3_bucket_notification" "bucket_notification" {
-  bucket = data.aws_s3_bucket.trigger_bucket
+  bucket = data.aws_s3_bucket.trigger_bucket.id
   lambda_function {
     lambda_function_arn = aws_lambda_function.infra_trigger_pipeline.arn
     events              = ["s3:ObjectCreated:*"]
@@ -64,19 +53,15 @@ resource "aws_s3_bucket_notification" "bucket_notification" {
   }
 }
 
-data "aws_iam_policy_document" "s3_for_lambda" {
-  statement {
-    effect    = "Allow"
-    actions   = ["s3:GetObject"]
-    resources = "${data.aws_s3_bucket.trigger_bucket.arn}/*"
-  }
+
+
+resource "aws_iam_role_policy" "s3_to_lambda" {
+  policy = data.aws_iam_policy_document.s3_for_lambda.json
+  role   = aws_iam_role.lambda_infra_trigger_pipeline_exec.id
 }
 
-data "aws_iam_policy_document" "stepfunctions_for_lambda" {
-  statement {
-    effect    = "Allow"
-    actions   = ["states:StartExecution"]
-    resources = [var.statemachine_arn]
-  }
+resource "aws_iam_role_policy" "stepfunctions_to_lambda" {
+  policy = data.aws_iam_policy_document.stepfunctions_for_lambda.json
+  role   = aws_iam_role.lambda_infra_trigger_pipeline_exec.id
 }
 
