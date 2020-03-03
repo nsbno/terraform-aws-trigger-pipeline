@@ -58,8 +58,8 @@ def lambda_handler(event, context):
 
     pipeline_trigger_expected_keys = ["SHA", "date", "name_prefix"]
     pipeline_trigger = get_content_from_s3(s3_bucket,s3_key,pipeline_trigger_expected_keys)
-    source_code = {'source_code': f"s3://{s3_bucket}/{s3_prefix}/{pipeline_trigger['SHA']}.zip"}
-    logger.info("Using source code location '%s'", source_code)
+    content = {'content': f"s3://{s3_bucket}/{s3_prefix}/{pipeline_trigger['SHA']}.zip"}
+    logger.info("Using source code location '%s'", content['content'])
 
     # starter codepipeline med input parametere
     state_machine = f"arn:aws:states:eu-west-1:{service_account_id}:stateMachine:{pipeline_trigger['name_prefix']}-state-machine"
@@ -67,5 +67,5 @@ def lambda_handler(event, context):
     client.start_execution(
         stateMachineArn=state_machine,
         name=pipeline_trigger['SHA'] + '-' + time.strftime("%Y%m%d-%H%M%S"),
-        input=json.dumps(source_code)
+        input=json.dumps(content)
     )
