@@ -104,11 +104,14 @@ def lambda_handler(event, context):
         # Triggered by update to an application repo (e.g., frontend, Docker, etc.).
         # Need to read trigger-event.json belonging to aws-repo
         logger.debug("Lambda was triggered by an application repository")
-        s3_key_aws_repo = f"{gh_org}/{original_pipeline_trigger['aws_repo_name']}/branches/master/{s3_filename}"
+        s3_prefix_aws_repo = f"{gh_org}/{original_pipeline_trigger['aws_repo_name']}/branches/master"
+        s3_key_aws_repo = f"{s3_prefix_aws_repo}/{s3_filename}"
         pipeline_trigger = get_content_from_s3(
             s3_bucket, s3_key_aws_repo, pipeline_trigger_expected_keys
         )
-        content = {"content": f"s3://{s3_bucket}/{s3_key_aws_repo}"}
+        content = {
+            "content": f"s3://{s3_bucket}/{s3_prefix_aws_repo}/{pipeline_trigger['SHA']}.zip"
+        }
     logger.info("Using source code location '%s'", content["content"])
 
     # starter codepipeline med input parametere
