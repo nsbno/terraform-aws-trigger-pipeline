@@ -85,7 +85,12 @@ def lambda_handler(event, context):
         s3_filename,
     )
 
-    pipeline_trigger_expected_keys = ["SHA", "date", "name_prefix"]
+    pipeline_trigger_expected_keys = [
+        "SHA",
+        "date",
+        "name_prefix",
+        "aws_repo_name",
+    ]
     original_pipeline_trigger = get_content_from_s3(
         s3_bucket, s3_key, pipeline_trigger_expected_keys
     )
