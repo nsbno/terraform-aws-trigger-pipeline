@@ -7,6 +7,7 @@ import re
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
+
 def extract_data_from_s3_key(s3_key):
     gh_org_symbols = r"\S+"
     gh_repo_symbols = r"\S+"
@@ -32,7 +33,8 @@ def extract_data_from_s3_key(s3_key):
             raise Exception()
     return groups
 
-def get_content_from_s3(s3_bucket,s3_key,expected_keys):
+
+def get_content_from_s3(s3_bucket, s3_key, expected_keys):
     try:
         s3 = boto3.resource("s3")
         obj = s3.Object(s3_bucket, s3_key)
@@ -44,7 +46,9 @@ def get_content_from_s3(s3_bucket,s3_key,expected_keys):
             s3_bucket,
             s3_key,
         )
-    if expected_keys != "" and not all(key in content for key in expected_keys):
+    if expected_keys != "" and not all(
+        key in content for key in expected_keys
+    ):
         logger.error(
             "Expected trigger event file to have keys '%s', but found '%s'",
             expected_keys,
@@ -53,6 +57,7 @@ def get_content_from_s3(s3_bucket,s3_key,expected_keys):
         raise Exception()
     return content
 
+
 def lambda_handler(event, context):
     logger.info("Lambda started with input event '%s'", event)
 
@@ -60,13 +65,16 @@ def lambda_handler(event, context):
         boto3.client("sts").get_caller_identity().get("Account")
     )
 
-
-
     # tar s3 event og henter bucketnavn og filpath
     s3_bucket = event["Records"][0]["s3"]["bucket"]["name"]
     s3_key = event["Records"][0]["s3"]["object"]["key"]
     data_from_s3_key = extract_data_from_s3_key(s3_key)
-    gh_org, gh_repo, gh_branch, sha = data_from_s3_key["gh_org"], data_from_s3_key["gh_repo"], data_from_s3_key["gh_branch"], data_from_s3_key["sha"]
+    gh_org, gh_repo, gh_branch, sha = (
+        data_from_s3_key["gh_org"],
+        data_from_s3_key["gh_repo"],
+        data_from_s3_key["gh_branch"],
+        data_from_s3_key["sha"],
+    )
     s3_prefix = f"{gh_org}/{gh_repo}/branches/{gh_branch}"
     s3_filename = f"{sha}.zip"
 
@@ -78,24 +86,30 @@ def lambda_handler(event, context):
     )
 
     pipeline_trigger_expected_keys = ["SHA", "date", "name_prefix"]
-    original_pipeline_trigger = get_content_from_s3(s3_bucket,s3_key,pipeline_trigger_expected_keys)
-    if original_pipeline_trigger['aws_repo_name'] == gh_repo:
+    original_pipeline_trigger = get_content_from_s3(
+        s3_bucket, s3_key, pipeline_trigger_expected_keys
+    )
+    if original_pipeline_trigger["aws_repo_name"] == gh_repo:
         # Triggered by update to aws repo
         pipeline_trigger = original_pipeline_trigger
-        content = {'content': f"s3://{s3_bucket}/{s3_prefix}/{pipeline_trigger['SHA']}.zip"}
+        content = {
+            "content": f"s3://{s3_bucket}/{s3_prefix}/{pipeline_trigger['SHA']}.zip"
+        }
     else:
         # Triggered by update to an application repo (e.g., frontend, Docker, etc.).
         # Need to read trigger-event.json belonging to aws-repo
         s3_key_aws_repo = f"{gh_org}/{original_pipeline_trigger['aws_repo_name']}/branches/master/trigger-event.json"
-        pipeline_trigger = get_content_from_s3(s3_bucket,s3_key_aws_repo,pipeline_trigger_expected_keys)
-        content = {'content': f"s3://{s3_bucket}/{original_pipeline_trigger['aws_repo_name']}/branches/master/{pipeline_trigger['SHA']}.zip"
-    logger.info("Using source code location '%s'", content['content'])
+        pipeline_trigger = get_content_from_s3(
+            s3_bucket, s3_key_aws_repo, pipeline_trigger_expected_keys
+        )
+        content = {"content": f"s3://{s3_bucket}/{s3_key_aws_repo}"}
+    logger.info("Using source code location '%s'", content["content"])
 
     # starter codepipeline med input parametere
     state_machine = f"arn:aws:states:eu-west-1:{service_account_id}:stateMachine:{pipeline_trigger['name_prefix']}-state-machine"
     client = boto3.client("stepfunctions")
     client.start_execution(
         stateMachineArn=state_machine,
-        name=pipeline_trigger['SHA'] + '-' + time.strftime("%Y%m%d-%H%M%S"),
-        input=json.dumps(content)
+        name=pipeline_trigger["SHA"] + "-" + time.strftime("%Y%m%d-%H%M%S"),
+        input=json.dumps(content),
     )
