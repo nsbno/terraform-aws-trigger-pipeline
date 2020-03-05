@@ -12,18 +12,18 @@ def extract_data_from_s3_key(s3_key):
     gh_org_symbols = r"\S+"
     gh_repo_symbols = r"\S+"
     gh_branch_symbols = r"\S+"
-    sha_symbols = r"[a-zA-Z0-9]+"
+    filename_symbols = r"[a-zA-Z0-9_.-]+"
     pattern = re.compile(
-        rf"/(?P<gh_org>{gh_org_symbols})"
+        rf"(?P<gh_org>{gh_org_symbols})"
         rf"/(?P<gh_repo>{gh_repo_symbols})"
         rf"/branches"
         rf"/(?P<gh_branch>{gh_branch_symbols})"
-        rf"/(?P<sha>{sha_symbols})\.zip$"
+        rf"/(?P<filename>{filename_symbols})$"
     )
     m = pattern.match(s3_key)
     groups = m.groupdict() if m else {}
     if groups:
-        reconstructed_s3_key = f"{groups['gh_org']}/{groups['gh_repo']}/branches/{groups['gh_branch']}/{groups['sha']}.zip"
+        reconstructed_s3_key = f"{groups['gh_org']}/{groups['gh_repo']}/branches/{groups['gh_branch']}/{groups['filename']}"
         if reconstructed_s3_key != s3_key:
             logger.error(
                 "Reconstructed S3 key '%s' is not equal to original S3 key '%s'",
@@ -69,14 +69,13 @@ def lambda_handler(event, context):
     s3_bucket = event["Records"][0]["s3"]["bucket"]["name"]
     s3_key = event["Records"][0]["s3"]["object"]["key"]
     data_from_s3_key = extract_data_from_s3_key(s3_key)
-    gh_org, gh_repo, gh_branch, sha = (
+    gh_org, gh_repo, gh_branch, s3_filename = (
         data_from_s3_key["gh_org"],
         data_from_s3_key["gh_repo"],
         data_from_s3_key["gh_branch"],
         data_from_s3_key["sha"],
     )
     s3_prefix = f"{gh_org}/{gh_repo}/branches/{gh_branch}"
-    s3_filename = f"{sha}.zip"
 
     logger.info(
         "Lambda was triggered by file 's3://%s/%s/%s'",
@@ -96,6 +95,7 @@ def lambda_handler(event, context):
     )
     if original_pipeline_trigger["aws_repo_name"] == gh_repo:
         # Triggered by update to aws repo
+        logger.debug("Lambda was triggered by an AWS repository")
         pipeline_trigger = original_pipeline_trigger
         content = {
             "content": f"s3://{s3_bucket}/{s3_prefix}/{pipeline_trigger['SHA']}.zip"
@@ -103,7 +103,8 @@ def lambda_handler(event, context):
     else:
         # Triggered by update to an application repo (e.g., frontend, Docker, etc.).
         # Need to read trigger-event.json belonging to aws-repo
-        s3_key_aws_repo = f"{gh_org}/{original_pipeline_trigger['aws_repo_name']}/branches/master/trigger-event.json"
+        logger.debug("Lambda was triggered by an application repository")
+        s3_key_aws_repo = f"{gh_org}/{original_pipeline_trigger['aws_repo_name']}/branches/master/{s3_filename}"
         pipeline_trigger = get_content_from_s3(
             s3_bucket, s3_key_aws_repo, pipeline_trigger_expected_keys
         )
