@@ -2,9 +2,35 @@ import json
 import boto3
 import time
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
+
+def extract_data_from_s3_key(s3_key):
+    gh_org_symbols = r"\S+"
+    gh_repo_symbols = r"\S+"
+    gh_branch_symbols = r"\S+"
+    sha_symbols = r"[a-zA-Z0-9]+"
+    pattern = re.compile(
+        rf"/(?P<gh_org>{gh_org_symbols})"
+        rf"/(?P<gh_repo>{gh_repo_symbols})"
+        rf"/branches"
+        rf"/(?P<gh_branch>{gh_branch_symbols})"
+        rf"/(?P<sha>{sha_symbols})\.zip$"
+    )
+    m = pattern.match(s3_key)
+    groups = m.groupdict() if m else {}
+    if groups:
+        reconstructed_s3_key = f"{groups['gh_org']}/{groups['gh_repo']}/branches/{groups['gh_branch']}/{groups['sha']}.zip"
+        if reconstructed_s3_key != s3_key:
+            logger.error(
+                "Reconstructed S3 key '%s' is not equal to original S3 key '%s'",
+                reconstructed_s3_key,
+                s3_key,
+            )
+            raise Exception()
+    return groups
 
 def get_content_from_s3(s3_bucket,s3_key,expected_keys):
     try:
@@ -39,15 +65,10 @@ def lambda_handler(event, context):
     # tar s3 event og henter bucketnavn og filpath
     s3_bucket = event["Records"][0]["s3"]["bucket"]["name"]
     s3_key = event["Records"][0]["s3"]["object"]["key"]
-    s3_prefix, s3_filename = s3_key.rsplit("/", 1)
-
-    if s3_key != f"{s3_prefix}/{s3_filename}":
-        logger.error(
-            "Tried to extract filename, but the resulting S3 key '%s' was not equal to the original key '%s'",
-            f"{s3_prefix}/{s3_filename}",
-            s3_key,
-        )
-        raise Exception()
+    data_from_s3_key = extract_data_from_s3_key(s3_key)
+    gh_org, gh_repo, gh_branch, sha = data_from_s3_key["gh_org"], data_from_s3_key["gh_repo"], data_from_s3_key["gh_branch"], data_from_s3_key["sha"]
+    s3_prefix = f"{gh_org}/{gh_repo}/branches/{gh_branch}"
+    s3_filename = f"{sha}.zip"
 
     logger.info(
         "Lambda was triggered by file 's3://%s/%s/%s'",
@@ -57,8 +78,17 @@ def lambda_handler(event, context):
     )
 
     pipeline_trigger_expected_keys = ["SHA", "date", "name_prefix"]
-    pipeline_trigger = get_content_from_s3(s3_bucket,s3_key,pipeline_trigger_expected_keys)
-    content = {'content': f"s3://{s3_bucket}/{s3_prefix}/{pipeline_trigger['SHA']}.zip"}
+    original_pipeline_trigger = get_content_from_s3(s3_bucket,s3_key,pipeline_trigger_expected_keys)
+    if original_pipeline_trigger['aws_repo_name'] == gh_repo:
+        # Triggered by update to aws repo
+        pipeline_trigger = original_pipeline_trigger
+        content = {'content': f"s3://{s3_bucket}/{s3_prefix}/{pipeline_trigger['SHA']}.zip"}
+    else:
+        # Triggered by update to an application repo (e.g., frontend, Docker, etc.).
+        # Need to read trigger-event.json belonging to aws-repo
+        s3_key_aws_repo = f"{gh_org}/{original_pipeline_trigger['aws_repo_name']}/branches/master/trigger-event.json"
+        pipeline_trigger = get_content_from_s3(s3_bucket,s3_key_aws_repo,pipeline_trigger_expected_keys)
+        content = {'content': f"s3://{s3_bucket}/{original_pipeline_trigger['aws_repo_name']}/branches/master/{pipeline_trigger['SHA']}.zip"
     logger.info("Using source code location '%s'", content['content'])
 
     # starter codepipeline med input parametere
