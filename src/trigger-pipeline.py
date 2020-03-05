@@ -73,7 +73,7 @@ def lambda_handler(event, context):
         data_from_s3_key["gh_org"],
         data_from_s3_key["gh_repo"],
         data_from_s3_key["gh_branch"],
-        data_from_s3_key["sha"],
+        data_from_s3_key["s3_filename"],
     )
     s3_prefix = f"{gh_org}/{gh_repo}/branches/{gh_branch}"
 
