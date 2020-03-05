@@ -12,18 +12,18 @@ def extract_data_from_s3_key(s3_key):
     gh_org_symbols = r"\S+"
     gh_repo_symbols = r"\S+"
     gh_branch_symbols = r"\S+"
-    filename_symbols = r"[a-zA-Z0-9_.-]+"
+    s3_filename_symbols = r"[a-zA-Z0-9_.-]+"
     pattern = re.compile(
         rf"(?P<gh_org>{gh_org_symbols})"
         rf"/(?P<gh_repo>{gh_repo_symbols})"
         rf"/branches"
         rf"/(?P<gh_branch>{gh_branch_symbols})"
-        rf"/(?P<filename>{filename_symbols})$"
+        rf"/(?P<s3_filename>{s3_filename_symbols})$"
     )
     m = pattern.match(s3_key)
     groups = m.groupdict() if m else {}
     if groups:
-        reconstructed_s3_key = f"{groups['gh_org']}/{groups['gh_repo']}/branches/{groups['gh_branch']}/{groups['filename']}"
+        reconstructed_s3_key = f"{groups['gh_org']}/{groups['gh_repo']}/branches/{groups['gh_branch']}/{groups['s3_filename']}"
         if reconstructed_s3_key != s3_key:
             logger.error(
                 "Reconstructed S3 key '%s' is not equal to original S3 key '%s'",
