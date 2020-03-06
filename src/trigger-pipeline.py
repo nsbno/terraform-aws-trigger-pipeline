@@ -9,6 +9,20 @@ logger.setLevel(logging.DEBUG)
 
 
 def extract_data_from_s3_key(s3_key):
+    """Extracts various values from an S3 key.
+
+    Args:
+        s3_key: The S3 key of the file that triggered the pipeline.
+
+    Returns:
+        A dictionary containing the name of the GitHub organization, repository,
+        branch and S3 file, or an empty dictionary if none or only a subset
+        of these values could be extracted.
+
+    Raises:
+        ValueError: The input S3 key could not be reconstructed by using the
+            extracted values.
+    """
     gh_org_symbols = r"\S+"
     gh_repo_symbols = r"\S+"
     gh_branch_symbols = r"\S+"
@@ -30,11 +44,28 @@ def extract_data_from_s3_key(s3_key):
                 reconstructed_s3_key,
                 s3_key,
             )
-            raise Exception()
+            raise ValueError()
     return groups
 
 
-def get_content_from_s3(s3_bucket, s3_key, expected_keys):
+def read_json_from_s3(s3_bucket, s3_key, expected_keys=[]):
+    """Reads the content of a JSON file in S3.
+
+    Args:
+        s3_bucket: The name of the S3 bucket where the JSON file is located.
+        s3_key: The S3 key of the JSON file.
+        expected_keys: The keys that are expected to be found inside the JSON file.
+
+    Returns:
+        The content of the JSON file converted to a Python dictionary.
+
+    Raises:
+        Exception: Could not load S3 file as JSON.
+        LookupError: Did not find expected keys in dictionary.
+    """
+    logger.debug(
+        "Reading file 's3://%s/%s", s3_bucket, s3_key,
+    )
     try:
         s3 = boto3.resource("s3")
         obj = s3.Object(s3_bucket, s3_key)
