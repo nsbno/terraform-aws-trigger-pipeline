@@ -62,6 +62,7 @@ def read_json_from_s3(s3_bucket, s3_key, expected_keys=[]):
 
     Raises:
         Exception: Could not load S3 file as JSON.
+        json.decoder.JSONDecodeError: Could not read file as JSON.
         LookupError: Did not find expected keys in dictionary.
     """
     logger.debug(
@@ -71,14 +72,22 @@ def read_json_from_s3(s3_bucket, s3_key, expected_keys=[]):
         s3 = boto3.resource("s3")
         obj = s3.Object(s3_bucket, s3_key)
         body = obj.get()["Body"].read().decode("utf-8")
-        content = json.loads(body)
     except Exception:
         logger.exception(
-            "Something went wrong when trying to load 's3://%s/%s' as JSON",
+            "Something went wrong when trying to download file 's3://%s/%s'",
             s3_bucket,
             s3_key,
         )
         raise
+    try:
+        content = json.loads(body)
+    except (TypeError, json.decoder.JSONDecodeError):
+        logger.exception(
+            "Something went wrong when trying to load file content '%s' as JSON",
+            body,
+        )
+        raise
+
     if expected_keys and not all(key in content for key in expected_keys):
         logger.error(
             "Expected trigger event file to have keys '%s', but found '%s'",
