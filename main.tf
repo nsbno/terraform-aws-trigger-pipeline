@@ -8,7 +8,7 @@ locals {
 
 data "archive_file" "lambda_infra_trigger_pipeline_src" {
   type        = "zip"
-  source_file = "${path.module}/src/trigger-pipeline.py"
+  source_file = "${path.module}/src/main.py"
   output_path = "${path.module}/src/trigger-pipeline.zip"
 }
 
