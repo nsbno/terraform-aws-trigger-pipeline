@@ -12,3 +12,5 @@ src/*.zip
 
 # virtualenvs
 **/*/.env
+
+**/*/__pycache__
