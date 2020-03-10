@@ -9,12 +9,12 @@ locals {
 data "archive_file" "lambda_infra_trigger_pipeline_src" {
   type        = "zip"
   source_file = "${path.module}/src/main.py"
-  output_path = "${path.module}/src/trigger-pipeline.zip"
+  output_path = "${path.module}/src/main.zip"
 }
 
 resource "aws_lambda_function" "infra_trigger_pipeline" {
   function_name    = "${var.name_prefix}-infra-trigger-pipeline"
-  handler          = "trigger-pipeline.lambda_handler"
+  handler          = "main.lambda_handler"
   role             = aws_iam_role.lambda_infra_trigger_pipeline_exec.arn
   runtime          = "python3.7"
   filename         = data.archive_file.lambda_infra_trigger_pipeline_src.output_path
