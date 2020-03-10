@@ -5,7 +5,9 @@
 # Distributed under terms of the MIT license.
 
 """
-
+Some pytest fixtures that are used for the tests.
+TODO: Allow API calls to different AWS services within a single test --
+    Some code that can be helpful for this: https://github.com/aws/aws-parallelcluster/blob/develop/cli/tests/conftest.py
 """
 
 import boto3
@@ -25,7 +27,7 @@ def aws_credentials():
     os.environ.pop("AWS_PROFILE", None)
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture()
 def s3_stub(aws_credentials):
     s3 = boto3.client("s3")
 
@@ -38,7 +40,20 @@ def s3_stub(aws_credentials):
             stub.assert_no_pending_responses()
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture()
+def sts_stub(aws_credentials):
+    sts = boto3.client("sts")
+
+    def patch_wrapper(*args, **kwargs):
+        return sts
+
+    with patch("main.boto3.client", patch_wrapper):
+        with Stubber(sts) as stub:
+            yield stub
+            stub.assert_no_pending_responses()
+
+
+@pytest.fixture()
 def s3_resource_stub(aws_credentials):
     s3 = boto3.resource("s3")
     client = s3.meta.client
