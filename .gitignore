@@ -5,6 +5,12 @@ crash.log
 
 # InteliJ IDE
 .idea/
+.vim/
 
 # zipped lambdas
 src/*.zip
+
+# virtualenvs
+**/*/.env
+
+**/*/__pycache__
