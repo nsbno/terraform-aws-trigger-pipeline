@@ -4,13 +4,19 @@ variable "name_prefix" {
 }
 
 variable "statemachine_arn" {
-  description = "The arn of the statemachine this lambda should trigger"
-  type = string
+  description = "The ARN of the state machhine this lambda can trigger"
+  type        = string
+}
+
+variable "additional_state_machine_arns" {
+  description = "A list of ARNs of additional state machines that the Lambda can trigger"
+  default     = []
+  type        = list(string)
 }
 
 variable "artifact_bucket_name" {
   description = "The name of the bucket used for trigger files and artifacts"
-  type = string
+  type        = string
 }
 
 variable "tags" {
