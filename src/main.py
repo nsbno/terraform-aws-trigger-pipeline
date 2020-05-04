@@ -183,9 +183,23 @@ def lambda_handler(event, context):
     )
     region = os.environ["AWS_REGION"]
 
-    s3_bucket = event["Records"][0]["s3"]["bucket"]["name"]
-    s3_key = event["Records"][0]["s3"]["object"]["key"]
-    logger.info("Lambda was triggered by file 's3://%s/%s'", s3_bucket, s3_key)
+    cost_saving_mode = event.get("cost_saving_mode", False)
+    s3_bucket = event.get("s3_bucket", "")
+    s3_key = event.get("s3_key", "")
+    if s3_bucket and s3_key:
+        logger.info("Lambda was triggered by CloudWatch Event")
+        logger.info(
+            "Path to trigger file was manually passed in to Lambda 's3://%s/%s'",
+            s3_bucket,
+            s3_key,
+        )
+
+    else:
+        s3_bucket = event["Records"][0]["s3"]["bucket"]["name"]
+        s3_key = event["Records"][0]["s3"]["object"]["key"]
+        logger.info(
+            "Lambda was triggered by file 's3://%s/%s'", s3_bucket, s3_key
+        )
 
     (
         contents_of_trigger_file,
@@ -200,5 +214,10 @@ def lambda_handler(event, context):
     execution_name = (
         f"{contents_of_trigger_file['SHA']}-{time.strftime('%Y%m%d-%H%M%S')}"
     )
-    execution_input = json.dumps({"content": s3_path_of_aws_repository_zip})
+    execution_input = json.dumps(
+        {
+            "content": s3_path_of_aws_repository_zip,
+            "cost_saving_mode": cost_saving_mode,
+        }
+    )
     start_pipeline_execution(pipeline_arn, execution_name, execution_input)
