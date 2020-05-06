@@ -184,6 +184,7 @@ def lambda_handler(event, context):
     region = os.environ["AWS_REGION"]
 
     cost_saving_mode = event.get("cost_saving_mode", False)
+    toggling_cost_saving_mode = event.get("toggling_cost_saving_mode", False)
     s3_bucket = event.get("s3_bucket", "")
     s3_key = event.get("s3_key", "")
     if s3_bucket and s3_key:
@@ -218,6 +219,7 @@ def lambda_handler(event, context):
         {
             "content": s3_path_of_aws_repository_zip,
             "cost_saving_mode": cost_saving_mode,
+            "toggling_cost_saving_mode": toggling_cost_saving_mode,
         }
     )
     start_pipeline_execution(pipeline_arn, execution_name, execution_input)
