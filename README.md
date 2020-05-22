@@ -1,6 +1,3 @@
-## Terraform AWS Template
+## Trigger Pipeline
 
-This template is a starting point for creating terraform modules.
-
-Terraform modules should be in a state that they can be published to the Terraform Module Registry. Guidelines can be 
-found here https://www.terraform.io/docs/registry/modules/publish.html
+This template deploys a lambda based setup that trigger an step function pipline based on configuration parses from an s3 upload.
