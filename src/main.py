@@ -188,7 +188,6 @@ def lambda_handler(event, context):
     s3_bucket = event.get("s3_bucket", "")
     s3_key = event.get("s3_key", "")
     if s3_bucket and s3_key:
-        logger.info("Lambda was triggered by CloudWatch Event")
         logger.info(
             "Path to trigger file was manually passed in to Lambda 's3://%s/%s'",
             s3_bucket,
