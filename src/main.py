@@ -223,6 +223,7 @@ def lambda_handler(event, context):
     execution_input = json.dumps(
         {
             "content": s3_path_of_aws_repository_zip,
+            "source": s3_path_of_aws_repository_zip.lstrip("s3://"),
             "cost_saving_mode": cost_saving_mode,
             "toggling_cost_saving_mode": toggling_cost_saving_mode,
         }
