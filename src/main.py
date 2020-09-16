@@ -98,7 +98,7 @@ def read_json_from_s3(s3_bucket, s3_key, expected_keys=[]):
     return content
 
 
-def get_trigger_file_and_s3_path(s3_bucket, s3_key):
+def get_trigger_file_and_s3_path(s3_bucket, s3_key, allowed_branches):
     """Gets the content of the trigger file belonging to the
     GitHub repository containing the main AWS set up, as well
     as the S3 path of the zip file containing the latest source
@@ -107,6 +107,7 @@ def get_trigger_file_and_s3_path(s3_bucket, s3_key):
     Args:
         s3_bucket: The name of the S3 bucket that triggered the Lambda.
         s3_key: The S3 key of the file that triggered the Lambda.
+        allowed_branches: A list of allowed branches.
 
     Returns:
         A tuple containing the contents of the trigger file as a dictionary
@@ -119,6 +120,9 @@ def get_trigger_file_and_s3_path(s3_bucket, s3_key):
         data_from_s3_key["gh_branch"],
         data_from_s3_key["s3_filename"],
     )
+    if gh_branch not in allowed_branches:
+        logger.error("Branch '%s' is not allowed to trigger the pipeline", gh_branch)
+        raise ValueError()
     s3_prefix = f"{gh_org}/{gh_repo}/branches/{gh_branch}"
 
     expected_keys_in_trigger_file = [
@@ -181,6 +185,8 @@ def lambda_handler(event, context):
     service_account_id = (
         boto3.client("sts").get_caller_identity().get("Account")
     )
+
+    allowed_branches = json.loads(os.environ["ALLOWED_BRANCHES"])
     region = os.environ["AWS_REGION"]
 
     cost_saving_mode = event.get("cost_saving_mode", False)
@@ -204,7 +210,7 @@ def lambda_handler(event, context):
     (
         contents_of_trigger_file,
         s3_path_of_aws_repository_zip,
-    ) = get_trigger_file_and_s3_path(s3_bucket, s3_key)
+    ) = get_trigger_file_and_s3_path(s3_bucket, s3_key, allowed_branches)
 
     logger.info(
         "Using source code location '%s'", s3_path_of_aws_repository_zip
