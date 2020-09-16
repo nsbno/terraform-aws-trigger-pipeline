@@ -8,6 +8,11 @@ variable "statemachine_arn" {
   type        = string
 }
 
+variable "allowed_branches" {
+  description = "The branches that are allowed to trigger an AWS Step Functions pipeline."
+  default     = ["master"]
+}
+
 variable "additional_state_machine_arns" {
   description = "A list of ARNs of additional state machines that the Lambda can trigger"
   default     = []

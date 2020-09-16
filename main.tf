@@ -19,8 +19,13 @@ resource "aws_lambda_function" "infra_trigger_pipeline" {
   runtime          = "python3.7"
   filename         = data.archive_file.lambda_infra_trigger_pipeline_src.output_path
   source_code_hash = filebase64sha256(data.archive_file.lambda_infra_trigger_pipeline_src.output_path)
-  timeout          = var.lambda_timeout
-  tags             = var.tags
+  environment {
+    variables = {
+      ALLOWED_BRANCHES = jsonencode(var.allowed_branches)
+    }
+  }
+  timeout = var.lambda_timeout
+  tags    = var.tags
 }
 
 resource "aws_iam_role" "lambda_infra_trigger_pipeline_exec" {
