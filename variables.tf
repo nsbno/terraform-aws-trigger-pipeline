@@ -9,7 +9,7 @@ variable "statemachine_arn" {
 }
 
 variable "allowed_branches" {
-  description = "The branches that are allowed to trigger the AWS Step Functions pipeline."
+  description = "The branches that are allowed to trigger an AWS Step Functions pipeline."
   default     = ["master"]
 }
 
