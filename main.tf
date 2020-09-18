@@ -28,6 +28,11 @@ resource "aws_lambda_function" "infra_trigger_pipeline" {
   tags    = var.tags
 }
 
+resource "aws_lambda_function_event_invoke_config" "this" {
+  function_name          = aws_lambda_function.infra_trigger_pipeline.function_name
+  maximum_retry_attempts = 0
+}
+
 resource "aws_iam_role" "lambda_infra_trigger_pipeline_exec" {
   name               = "${var.name_prefix}-infra-trigger-pipeline"
   assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
