@@ -163,7 +163,7 @@ def lambda_handler(event, context):
 
     pipeline_arn = (
         f"arn:aws:states:{region}:{service_account_id}:stateMachine:"
-        "{trigger_file['pipeline_name']}"
+        f"{trigger_file['pipeline_name']}"
     )
     execution_name = (
         f"{trigger_file['git_sha1']}-{time.strftime('%Y%m%d-%H%M%S')}"
