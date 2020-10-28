@@ -105,7 +105,7 @@ def lambda_handler(event, context):
 
     allowed_branches = json.loads(os.environ["ALLOWED_BRANCHES"])
     region = os.environ["AWS_REGION"]
-    service_account_id = os.environ["SERVICE_ACCOUNT_ID"]
+    service_account_id = os.environ["CURRENT_ACCOUNT_ID"]
 
     cost_saving_mode = event.get("cost_saving_mode", False)
     toggling_cost_saving_mode = event.get("toggling_cost_saving_mode", False)
