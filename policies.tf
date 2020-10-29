@@ -39,7 +39,7 @@ data "aws_iam_policy_document" "stepfunctions_for_lambda" {
   statement {
     effect    = "Allow"
     actions   = ["states:StartExecution"]
-    resources = local.state_machine_arns
+    resources = var.state_machine_arns
   }
 }
 

@@ -3,11 +3,6 @@ variable "name_prefix" {
   type        = string
 }
 
-variable "statemachine_arn" {
-  description = "The ARN of the state machhine this lambda can trigger"
-  type        = string
-}
-
 variable "allowed_branches" {
   description = "The branches that are allowed to trigger an AWS Step Functions pipeline (NOTE: A rule specified in `var.trigger_rules` takes presedence over this)."
   default     = ["master"]
@@ -23,9 +18,8 @@ variable "trigger_rules" {
   default = null
 }
 
-variable "additional_state_machine_arns" {
-  description = "A list of ARNs of additional state machines that the Lambda can trigger"
-  default     = []
+variable "state_machine_arns" {
+  description = "A list of ARNs of AWS Step Functions state machines that the Lambda can trigger."
   type        = list(string)
 }
 
