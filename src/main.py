@@ -3,50 +3,9 @@ import boto3
 import time
 import logging
 import os
-import re
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
-
-
-def extract_data_from_s3_key(s3_key):
-    """Extracts various values from an S3 key.
-
-    Args:
-        s3_key: The S3 key of the file that triggered the pipeline.
-
-    Returns:
-        A dictionary containing the name of the GitHub organization, repository,
-        branch and S3 file, or an empty dictionary if none or only a subset
-        of these values could be extracted.
-
-    Raises:
-        ValueError: The input S3 key could not be reconstructed by using the
-            extracted values.
-    """
-    gh_org_symbols = r"\S+"
-    gh_repo_symbols = r"\S+"
-    gh_branch_symbols = r"\S+"
-    s3_filename_symbols = r"[a-zA-Z0-9_.-]+"
-    pattern = re.compile(
-        rf"(?P<gh_org>{gh_org_symbols})"
-        rf"/(?P<gh_repo>{gh_repo_symbols})"
-        rf"/branches"
-        rf"/(?P<gh_branch>{gh_branch_symbols})"
-        rf"/(?P<s3_filename>{s3_filename_symbols})$"
-    )
-    m = pattern.match(s3_key)
-    groups = m.groupdict() if m else {}
-    if groups:
-        reconstructed_s3_key = f"{groups['gh_org']}/{groups['gh_repo']}/branches/{groups['gh_branch']}/{groups['s3_filename']}"
-        if reconstructed_s3_key != s3_key:
-            logger.error(
-                "Reconstructed S3 key '%s' is not equal to original S3 key '%s'",
-                reconstructed_s3_key,
-                s3_key,
-            )
-            raise ValueError()
-    return groups
 
 
 def read_json_from_s3(s3_bucket, s3_key, expected_keys=[]):
