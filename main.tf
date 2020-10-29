@@ -5,6 +5,7 @@ locals {
   current_account_id   = data.aws_caller_identity.current-account.account_id
   current_region       = data.aws_region.current.name
   name_of_trigger_file = "trigger-event.json"
+  state_machine_arns   = sort(distinct(concat([var.statemachine_arn], var.additional_state_machine_arns)))
   trigger_rules = var.trigger_rules == null ? [for arn in var.state_machine_arns : {
     state_machine_arn    = arn
     allowed_branches     = var.allowed_branches
