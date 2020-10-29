@@ -28,9 +28,9 @@ resource "aws_lambda_function" "infra_trigger_pipeline" {
   source_code_hash = filebase64sha256(data.archive_file.lambda_infra_trigger_pipeline_src.output_path)
   environment {
     variables = {
-      CURRENT_ACCOUNT_ID = local.current_account_id
-      TRIGGER_RULES      = jsonencode(local.trigger_rules)
-      NAME_OF_TRIGGER_FILE       = local.name_of_trigger_file
+      CURRENT_ACCOUNT_ID   = local.current_account_id
+      TRIGGER_RULES        = jsonencode(local.trigger_rules)
+      NAME_OF_TRIGGER_FILE = local.name_of_trigger_file
     }
   }
   timeout = var.lambda_timeout
