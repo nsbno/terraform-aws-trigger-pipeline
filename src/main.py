@@ -180,7 +180,6 @@ def lambda_handler(event, context):
         }
     )
     if triggered_by_ci:
-        logger.info("Verifying rules %s", trigger_rules)
         rule = next(
             (
                 rule
