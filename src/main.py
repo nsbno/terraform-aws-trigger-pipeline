@@ -100,25 +100,65 @@ def read_json_from_s3(s3_bucket, s3_key, expected_keys=[]):
     return content
 
 
+def verify_rule(rule, pipeline_arn, branch, repo):
+    """Verify that the pipeline is being triggered by an approved
+    branch and repository"""
+    if not rule:
+        logger.error(
+            "No trigger rule found for state machine '%s'", pipeline_arn
+        )
+        return False
+    if not (
+        "*" in rule["allowed_branches"] or branch in rule["allowed_branches"]
+    ):
+        logger.warn(
+            "The branch '%s' is not allowed to trigger pipeline '%s'",
+            branch,
+            pipeline_arn,
+        )
+        return False
+    if not (
+        "*" in rule["allowed_repositories"]
+        or repo in rule["allowed_repositories"]
+    ):
+        logger.warn(
+            "The repository '%s' is not allowed to trigger pipeline '%s'",
+            repo,
+            pipeline_arn,
+        )
+        return False
+    return True
+
+
 def lambda_handler(event, context):
     logger.info("Lambda started with input event '%s'", event)
 
-    allowed_branches = json.loads(os.environ["ALLOWED_BRANCHES"])
+    trigger_rules = json.loads(os.environ["TRIGGER_RULES"])
+    name_of_trigger_file = os.environ["NAME_OF_TRIGGER_FILE"]
     region = os.environ["AWS_REGION"]
     service_account_id = os.environ["CURRENT_ACCOUNT_ID"]
+    state_machine_arns = list(
+        map(lambda rule: rule["state_machine_arn"], trigger_rules)
+    )
 
-    cost_saving_mode = event.get("cost_saving_mode", False)
-    toggling_cost_saving_mode = event.get("toggling_cost_saving_mode", False)
-    s3_bucket = event.get("s3_bucket", "")
-    s3_key = event.get("s3_key", "")
-    if s3_bucket and s3_key:
+    additional_inputs = {}
+    if event.get("event_rule", False):
+        triggered_by_ci = False
+        if not all(key in event for key in ["s3_bucket", "s3_key", "inputs"]):
+            logger.error(
+                "The CloudWatch Event did not pass in all expected keys"
+            )
+            raise ValueError
+        s3_bucket = event["s3_bucket"]
+        s3_key = event["s3_key"]
         logger.info(
             "Path to trigger file was manually passed in to Lambda 's3://%s/%s'",
             s3_bucket,
             s3_key,
         )
-
+        additional_inputs = event["inputs"]
     else:
+        triggered_by_ci = True
         s3_bucket = event["Records"][0]["s3"]["bucket"]["name"]
         s3_key = event["Records"][0]["s3"]["object"]["key"]
         logger.info(
@@ -133,7 +173,6 @@ def lambda_handler(event, context):
         "git_sha1",
         "pipeline_name",
         "deployment_repo",
-        "trigger_file",
     ]
 
     trigger_file = read_json_from_s3(s3_bucket, s3_key, required_keys)
@@ -150,7 +189,7 @@ def lambda_handler(event, context):
             (
                 f"{s3_bucket}/{trigger_file['git_owner']}/"
                 f"{trigger_file['deployment_repo']}/branches/master/"
-                f"{trigger_file['trigger_file']}"
+                f"{name_of_trigger_file}"
             ),
             required_keys,
         )
@@ -165,16 +204,38 @@ def lambda_handler(event, context):
         f"arn:aws:states:{region}:{service_account_id}:stateMachine:"
         f"{trigger_file['pipeline_name']}"
     )
+    if pipeline_arn not in state_machine_arns:
+        logger.error("Unexpected state machine ARN '%s'", state_machine_arns)
+        return
+
     execution_name = (
         f"{trigger_file['git_sha1']}-{time.strftime('%Y%m%d-%H%M%S')}"
     )
+
     execution_input = json.dumps(
         {
+            **additional_inputs,
             **trigger_file,
             "deployment_package": deployment_package,
             "content": deployment_package,
         }
     )
+    if triggered_by_ci:
+        rule = next(
+            (
+                rule["state_machine_arn"] == pipeline_arn
+                for rule in trigger_rules
+            ),
+            None,
+        )
+        verified = verify_rule(
+            rule,
+            pipeline_arn,
+            trigger_file["git_repo"],
+            trigger_file["git_branch"],
+        )
+        if not verified:
+            raise ValueError
 
     client = boto3.client("stepfunctions")
     client.start_execution(
