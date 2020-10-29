@@ -190,8 +190,8 @@ def lambda_handler(event, context):
         verified = verify_rule(
             rule,
             pipeline_arn,
-            trigger_file["git_repo"],
             trigger_file["git_branch"],
+            trigger_file["git_repo"],
         )
         if not verified:
             raise ValueError
