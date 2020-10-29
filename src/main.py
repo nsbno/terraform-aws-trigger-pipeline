@@ -183,8 +183,9 @@ def lambda_handler(event, context):
         logger.info("Verifying rules %s", trigger_rules)
         rule = next(
             (
-                rule["state_machine_arn"] == pipeline_arn
+                rule
                 for rule in trigger_rules
+                if rule["state_machine_arn"] == pipeline_arn
             ),
             None,
         )
