@@ -5,11 +5,12 @@ locals {
   current_account_id   = data.aws_caller_identity.current-account.account_id
   current_region       = data.aws_region.current.name
   name_of_trigger_file = "trigger-event.json"
-  trigger_rules = var.trigger_rules == null ? [for arn in var.state_machine_arns : {
+  trigger_rules_by_pipeline = { for obj in var.trigger_rules : obj.state_machine_arn => obj if var.trigger_rules != null }
+  trigger_rules = [for arn in var.state_machine_arns : lookup(local.trigger_rules_by_pipeline, state_machine_arn, {
     state_machine_arn    = arn
     allowed_branches     = var.allowed_branches
     allowed_repositories = ["*"]
-  }] : var.trigger_rules
+  }]
 }
 
 data "archive_file" "lambda_infra_trigger_pipeline_src" {
