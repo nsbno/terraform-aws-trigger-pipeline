@@ -2,8 +2,9 @@ data "aws_caller_identity" "current-account" {}
 data "aws_region" "current" {}
 
 locals {
-  current_account_id = data.aws_caller_identity.current-account.account_id
-  current_region     = data.aws_region.current.name
+  current_account_id   = data.aws_caller_identity.current-account.account_id
+  current_region       = data.aws_region.current.name
+  name_of_trigger_file = "trigger-event.json"
   trigger_rules = var.trigger_rules == null ? [for arn in var.state_machine_arns : {
     state_machine_arn    = arn
     allowed_branches     = var.allowed_branches
@@ -28,6 +29,7 @@ resource "aws_lambda_function" "infra_trigger_pipeline" {
     variables = {
       CURRENT_ACCOUNT_ID = local.current_account_id
       TRIGGER_RULES      = jsonencode(local.trigger_rules)
+      NAME_OF_TRIGGER_FILE       = local.name_of_trigger_file
     }
   }
   timeout = var.lambda_timeout
@@ -66,7 +68,7 @@ resource "aws_s3_bucket_notification" "bucket_notification" {
   lambda_function {
     lambda_function_arn = aws_lambda_function.infra_trigger_pipeline.arn
     events              = ["s3:ObjectCreated:*"]
-    filter_suffix       = "trigger-event.json"
+    filter_suffix       = local.name_of_trigger_file
   }
 }
 
