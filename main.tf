@@ -4,6 +4,11 @@ data "aws_region" "current" {}
 locals {
   current_account_id = data.aws_caller_identity.current-account.account_id
   current_region     = data.aws_region.current.name
+  trigger_rules = var.trigger_rules == null ? [for arn in var.state_machine_arns : {
+    state_machine_arn    = arn
+    allowed_branches     = var.allowed_branches
+    allowed_repositories = ["*"]
+  }] : var.trigger_rules
 }
 
 data "archive_file" "lambda_infra_trigger_pipeline_src" {
@@ -22,7 +27,7 @@ resource "aws_lambda_function" "infra_trigger_pipeline" {
   environment {
     variables = {
       CURRENT_ACCOUNT_ID = local.current_account_id
-      ALLOWED_BRANCHES   = jsonencode(var.allowed_branches)
+      TRIGGER_RULES      = jsonencode(local.trigger_rules)
     }
   }
   timeout = var.lambda_timeout
