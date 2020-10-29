@@ -9,18 +9,18 @@ variable "statemachine_arn" {
 }
 
 variable "allowed_branches" {
-  description = "The branches that are allowed to trigger an AWS Step Functions pipeline (NOTE: `var.trigger_rules` takes presedence over this)."
+  description = "The branches that are allowed to trigger an AWS Step Functions pipeline (NOTE: A rule specified in `var.trigger_rules` takes presedence over this)."
   default     = ["master"]
 }
 
 variable "trigger_rules" {
   description = "A list of objects that describe which branches and repositories are allowed to trigger a AWS Step Functions pipeline. A single wildcard item can be used to signify all (i.e., no restrictions)."
   type = list(object({
-    state_machine_arn = string
-    allowed_branches = list(string)
+    state_machine_arn    = string
+    allowed_branches     = list(string)
     allowed_repositories = list(string)
-  })
-  default     = null
+  }))
+  default = null
 }
 
 variable "additional_state_machine_arns" {
