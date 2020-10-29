@@ -115,7 +115,7 @@ def lambda_handler(event, context):
             s3_bucket,
             s3_key,
         )
-        additional_inputs = event["inputs"]
+        additional_inputs = event.get("inputs", {})
     else:
         triggered_by_ci = True
         s3_bucket = event["Records"][0]["s3"]["bucket"]["name"]
