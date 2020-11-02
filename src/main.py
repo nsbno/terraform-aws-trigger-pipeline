@@ -100,10 +100,10 @@ def lambda_handler(event, context):
         map(lambda rule: rule["state_machine_arn"], trigger_rules)
     )
 
-    additional_inputs = {}
-    if event.get("event_rule", False):
+    eventbridge_input = {}
+    if event.get("eventbridge_rule", False):
         triggered_by_ci = False
-        if not all(key in event for key in ["s3_bucket", "s3_key", "inputs"]):
+        if not all(key in event for key in ["s3_bucket", "s3_key"]):
             logger.error(
                 "The CloudWatch Event did not pass in all expected keys"
             )
@@ -115,7 +115,7 @@ def lambda_handler(event, context):
             s3_bucket,
             s3_key,
         )
-        additional_inputs = event.get("inputs", {})
+        eventbridge_input = event.get("input", {})
     else:
         triggered_by_ci = True
         s3_bucket = event["Records"][0]["s3"]["bucket"]["name"]
@@ -175,10 +175,15 @@ def lambda_handler(event, context):
 
     execution_input = json.dumps(
         {
-            **additional_inputs,
             **trigger_file,
+            **(
+                {"eventbridge_input": eventbridge_input}
+                if len(eventbridge_input)
+                else {}
+            ),
             "deployment_package": deployment_package,
-        }
+        },
+        sort_keys=True,
     )
     if triggered_by_ci:
         rule = next(
