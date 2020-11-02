@@ -178,7 +178,6 @@ def lambda_handler(event, context):
             **additional_inputs,
             **trigger_file,
             "deployment_package": deployment_package,
-            "content": deployment_package,
         }
     )
     if triggered_by_ci:
