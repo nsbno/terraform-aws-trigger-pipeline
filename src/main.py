@@ -147,14 +147,16 @@ def lambda_handler(event, context):
             s3_bucket,
             (
                 f"{s3_bucket}/{trigger_file['git_owner']}/"
-                f"{trigger_file['deployment_repo']}/branches/master/"
+                f"{trigger_file['deployment_repo']}/branches/"
+                f"{trigger_file['deployment_branch']}/"
                 f"{name_of_trigger_file}"
             ),
             required_keys,
         )
         deployment_package = (
             f"{s3_bucket}/{trigger_file['git_owner']}/"
-            f"{trigger_file['deployment_repo']}/branches/master/"
+            f"{trigger_file['deployment_repo']}/branches/"
+            f"{trigger_file['deployment_branch']}/"
             f"{deployment_trigger_file['git_sha1']}.zip"
         )
     logger.info("Using source code location '%s'", deployment_package)
