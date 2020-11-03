@@ -59,21 +59,21 @@ def read_json_from_s3(s3_bucket, s3_key, expected_keys=[]):
     return content
 
 
-def verify_rule(rule, pipeline_arn, branch, repo):
+def verify_rule(rule, repo, branch):
     """Verify that the pipeline is being triggered by an approved
     branch and repository"""
-    if not rule:
-        logger.error(
-            "No trigger rule found for state machine '%s'", pipeline_arn
-        )
-        return False
+    logger.info(
+        "Verifying rule '%s' against repo '%s' and branch '%s'",
+        rule,
+        repo,
+        branch,
+    )
     if not (
         "*" in rule["allowed_branches"] or branch in rule["allowed_branches"]
     ):
         logger.warn(
-            "The branch '%s' is not allowed to trigger pipeline '%s'",
+            "The branch '%s' is not allowed to trigger the pipeline",
             branch,
-            pipeline_arn,
         )
         return False
     if not (
@@ -81,9 +81,8 @@ def verify_rule(rule, pipeline_arn, branch, repo):
         or repo in rule["allowed_repositories"]
     ):
         logger.warn(
-            "The repository '%s' is not allowed to trigger pipeline '%s'",
+            "The repository '%s' is not allowed to trigger the pipeline",
             repo,
-            pipeline_arn,
         )
         return False
     return True
@@ -194,14 +193,19 @@ def lambda_handler(event, context):
             ),
             None,
         )
-        verified = verify_rule(
-            rule,
-            pipeline_arn,
-            trigger_file["git_branch"],
-            trigger_file["git_repo"],
-        )
-        if not verified:
+        if not rule:
+            logger.error(
+                "No trigger rule found for state machine '%s'", pipeline_arn
+            )
             raise ValueError
+        else:
+            verified = verify_rule(
+                rule,
+                trigger_file["git_repo"],
+                trigger_file["git_branch"],
+            )
+            if not verified:
+                raise ValueError
 
     client = boto3.client("stepfunctions")
     client.start_execution(
