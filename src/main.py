@@ -146,7 +146,7 @@ def lambda_handler(event, context):
         deployment_trigger_file = read_json_from_s3(
             s3_bucket,
             (
-                f"{s3_bucket}/{trigger_file['git_owner']}/"
+                f"{trigger_file['git_owner']}/"
                 f"{trigger_file['deployment_repo']}/branches/"
                 f"{trigger_file['deployment_branch']}/"
                 f"{name_of_trigger_file}"
