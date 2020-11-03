@@ -2,8 +2,15 @@ data "aws_caller_identity" "current-account" {}
 data "aws_region" "current" {}
 
 locals {
-  current_account_id = data.aws_caller_identity.current-account.account_id
-  current_region     = data.aws_region.current.name
+  current_account_id        = data.aws_caller_identity.current-account.account_id
+  current_region            = data.aws_region.current.name
+  name_of_trigger_file      = "trigger-event.json"
+  trigger_rules_by_pipeline = var.trigger_rules == null ? {} : { for obj in var.trigger_rules : obj.state_machine_arn => obj }
+  trigger_rules = [for arn in var.state_machine_arns : lookup(local.trigger_rules_by_pipeline, arn, {
+    state_machine_arn    = arn
+    allowed_branches     = var.allowed_branches
+    allowed_repositories = ["*"]
+  })]
 }
 
 data "archive_file" "lambda_infra_trigger_pipeline_src" {
@@ -21,7 +28,9 @@ resource "aws_lambda_function" "infra_trigger_pipeline" {
   source_code_hash = filebase64sha256(data.archive_file.lambda_infra_trigger_pipeline_src.output_path)
   environment {
     variables = {
-      ALLOWED_BRANCHES = jsonencode(var.allowed_branches)
+      CURRENT_ACCOUNT_ID   = local.current_account_id
+      TRIGGER_RULES        = jsonencode(local.trigger_rules)
+      NAME_OF_TRIGGER_FILE = local.name_of_trigger_file
     }
   }
   timeout = var.lambda_timeout
@@ -60,7 +69,7 @@ resource "aws_s3_bucket_notification" "bucket_notification" {
   lambda_function {
     lambda_function_arn = aws_lambda_function.infra_trigger_pipeline.arn
     events              = ["s3:ObjectCreated:*"]
-    filter_suffix       = "trigger-event.json"
+    filter_suffix       = local.name_of_trigger_file
   }
 }
 

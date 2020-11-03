@@ -3,50 +3,9 @@ import boto3
 import time
 import logging
 import os
-import re
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
-
-
-def extract_data_from_s3_key(s3_key):
-    """Extracts various values from an S3 key.
-
-    Args:
-        s3_key: The S3 key of the file that triggered the pipeline.
-
-    Returns:
-        A dictionary containing the name of the GitHub organization, repository,
-        branch and S3 file, or an empty dictionary if none or only a subset
-        of these values could be extracted.
-
-    Raises:
-        ValueError: The input S3 key could not be reconstructed by using the
-            extracted values.
-    """
-    gh_org_symbols = r"\S+"
-    gh_repo_symbols = r"\S+"
-    gh_branch_symbols = r"\S+"
-    s3_filename_symbols = r"[a-zA-Z0-9_.-]+"
-    pattern = re.compile(
-        rf"(?P<gh_org>{gh_org_symbols})"
-        rf"/(?P<gh_repo>{gh_repo_symbols})"
-        rf"/branches"
-        rf"/(?P<gh_branch>{gh_branch_symbols})"
-        rf"/(?P<s3_filename>{s3_filename_symbols})$"
-    )
-    m = pattern.match(s3_key)
-    groups = m.groupdict() if m else {}
-    if groups:
-        reconstructed_s3_key = f"{groups['gh_org']}/{groups['gh_repo']}/branches/{groups['gh_branch']}/{groups['s3_filename']}"
-        if reconstructed_s3_key != s3_key:
-            logger.error(
-                "Reconstructed S3 key '%s' is not equal to original S3 key '%s'",
-                reconstructed_s3_key,
-                s3_key,
-            )
-            raise ValueError()
-    return groups
 
 
 def read_json_from_s3(s3_bucket, s3_key, expected_keys=[]):
@@ -66,7 +25,9 @@ def read_json_from_s3(s3_bucket, s3_key, expected_keys=[]):
         LookupError: Did not find expected keys in dictionary.
     """
     logger.debug(
-        "Reading file 's3://%s/%s", s3_bucket, s3_key,
+        "Reading file 's3://%s/%s",
+        s3_bucket,
+        s3_key,
     )
     try:
         s3 = boto3.resource("s3")
@@ -98,133 +59,157 @@ def read_json_from_s3(s3_bucket, s3_key, expected_keys=[]):
     return content
 
 
-def get_trigger_file_and_s3_path(s3_bucket, s3_key, allowed_branches):
-    """Gets the content of the trigger file belonging to the
-    GitHub repository containing the main AWS set up, as well
-    as the S3 path of the zip file containing the latest source
-    code for this repository.
-
-    Args:
-        s3_bucket: The name of the S3 bucket that triggered the Lambda.
-        s3_key: The S3 key of the file that triggered the Lambda.
-        allowed_branches: A list of allowed branches.
-
-    Returns:
-        A tuple containing the contents of the trigger file as a dictionary
-        and the S3 path of the zip file containing the latest source code.
-    """
-    data_from_s3_key = extract_data_from_s3_key(s3_key)
-    gh_org, gh_repo, gh_branch, s3_filename = (
-        data_from_s3_key["gh_org"],
-        data_from_s3_key["gh_repo"],
-        data_from_s3_key["gh_branch"],
-        data_from_s3_key["s3_filename"],
+def verify_rule(rule, repo, branch):
+    """Verify that the pipeline is being triggered by an approved
+    branch and repository"""
+    logger.info(
+        "Verifying rule '%s' against repo '%s' and branch '%s'",
+        rule,
+        repo,
+        branch,
     )
-    if gh_branch not in allowed_branches:
-        logger.error("Branch '%s' is not allowed to trigger the pipeline", gh_branch)
-        raise ValueError()
-    s3_prefix = f"{gh_org}/{gh_repo}/branches/{gh_branch}"
-
-    expected_keys_in_trigger_file = [
-        "SHA",
-        "date",
-        "name_prefix",
-        "aws_repo_name",
-    ]
-    contents_of_trigger_file = read_json_from_s3(
-        s3_bucket, s3_key, expected_keys_in_trigger_file
-    )
-    aws_gh_repo = contents_of_trigger_file["aws_repo_name"]
-    if aws_gh_repo == gh_repo:
-        # Triggered by update to aws repo
-        logger.debug(
-            "Lambda was triggered by GitHub repository containing the main AWS set up '%s'",
-            gh_repo,
+    if not (
+        "*" in rule["allowed_branches"] or branch in rule["allowed_branches"]
+    ):
+        logger.warn(
+            "The branch '%s' is not allowed to trigger the pipeline",
+            branch,
         )
-        s3_path = f"s3://{s3_bucket}/{s3_prefix}/{contents_of_trigger_file['SHA']}.zip"
-        return contents_of_trigger_file, s3_path
-
-    # Triggered by update to an application repo (e.g., frontend, Docker, etc.).
-    # Need to read trigger-event.json belonging to aws-repo
-    logger.debug(
-        "Lambda was triggered by GitHub repository containing application code '%s'",
-        gh_repo,
-    )
-    s3_prefix_aws_repo = f"{gh_org}/{aws_gh_repo}/branches/master"
-    s3_key_aws_repo = f"{s3_prefix_aws_repo}/{s3_filename}"
-    logger.debug(
-        "Reading the trigger file belonging to the GitHub repository containing the main AWS set up '%s'",
-        aws_gh_repo,
-    )
-    contents_of_trigger_file = read_json_from_s3(
-        s3_bucket, s3_key_aws_repo, expected_keys_in_trigger_file
-    )
-    s3_path = f"s3://{s3_bucket}/{s3_prefix_aws_repo}/{contents_of_trigger_file['SHA']}.zip"
-    return contents_of_trigger_file, s3_path
-
-
-def start_pipeline_execution(pipeline_arn, execution_name, execution_input):
-    """Starts a pipeline execution.
-
-    Args:
-        pipeline_arn: The ARN of the pipeline that is to be executed.
-        execution_name: The name of the execution.
-        execution_input: The JSON input to the execution.
-    """
-    client = boto3.client("stepfunctions")
-    client.start_execution(
-        stateMachineArn=pipeline_arn,
-        name=execution_name,
-        input=execution_input,
-    )
+        return False
+    if not (
+        "*" in rule["allowed_repositories"]
+        or repo in rule["allowed_repositories"]
+    ):
+        logger.warn(
+            "The repository '%s' is not allowed to trigger the pipeline",
+            repo,
+        )
+        return False
+    return True
 
 
 def lambda_handler(event, context):
     logger.info("Lambda started with input event '%s'", event)
 
-    service_account_id = (
-        boto3.client("sts").get_caller_identity().get("Account")
+    trigger_rules = json.loads(os.environ["TRIGGER_RULES"])
+    name_of_trigger_file = os.environ["NAME_OF_TRIGGER_FILE"]
+    region = os.environ["AWS_REGION"]
+    service_account_id = os.environ["CURRENT_ACCOUNT_ID"]
+    state_machine_arns = list(
+        map(lambda rule: rule["state_machine_arn"], trigger_rules)
     )
 
-    allowed_branches = json.loads(os.environ["ALLOWED_BRANCHES"])
-    region = os.environ["AWS_REGION"]
-
-    cost_saving_mode = event.get("cost_saving_mode", False)
-    toggling_cost_saving_mode = event.get("toggling_cost_saving_mode", False)
-    s3_bucket = event.get("s3_bucket", "")
-    s3_key = event.get("s3_key", "")
-    if s3_bucket and s3_key:
+    eventbridge_input = {}
+    if event.get("eventbridge_rule", False):
+        triggered_by_ci = False
+        if not all(key in event for key in ["s3_bucket", "s3_key"]):
+            logger.error(
+                "The CloudWatch Event did not pass in all expected keys"
+            )
+            raise ValueError
+        s3_bucket = event["s3_bucket"]
+        s3_key = event["s3_key"]
         logger.info(
             "Path to trigger file was manually passed in to Lambda 's3://%s/%s'",
             s3_bucket,
             s3_key,
         )
-
+        eventbridge_input = event.get("input", {})
     else:
+        triggered_by_ci = True
         s3_bucket = event["Records"][0]["s3"]["bucket"]["name"]
         s3_key = event["Records"][0]["s3"]["object"]["key"]
         logger.info(
             "Lambda was triggered by file 's3://%s/%s'", s3_bucket, s3_key
         )
 
-    (
-        contents_of_trigger_file,
-        s3_path_of_aws_repository_zip,
-    ) = get_trigger_file_and_s3_path(s3_bucket, s3_key, allowed_branches)
+    required_keys = [
+        "git_owner",
+        "git_repo",
+        "git_branch",
+        "git_owner",
+        "git_sha1",
+        "pipeline_name",
+        "deployment_repo",
+    ]
 
-    logger.info(
-        "Using source code location '%s'", s3_path_of_aws_repository_zip
+    trigger_file = read_json_from_s3(s3_bucket, s3_key, required_keys)
+    s3_prefix = (
+        f"{trigger_file['git_owner']}/{trigger_file['git_repo']}/branches/"
+        f"{trigger_file['git_branch']}"
     )
+    deployment_package = (
+        f"s3://{s3_bucket}/{s3_prefix}/{trigger_file['git_sha1']}.zip"
+    )
+    if trigger_file["git_repo"] != trigger_file["deployment_repo"]:
+        deployment_trigger_file = read_json_from_s3(
+            s3_bucket,
+            (
+                f"{trigger_file['git_owner']}/"
+                f"{trigger_file['deployment_repo']}/branches/"
+                f"{trigger_file['deployment_branch']}/"
+                f"{name_of_trigger_file}"
+            ),
+            required_keys,
+        )
+        deployment_package = (
+            f"{s3_bucket}/{trigger_file['git_owner']}/"
+            f"{trigger_file['deployment_repo']}/branches/"
+            f"{trigger_file['deployment_branch']}/"
+            f"{deployment_trigger_file['git_sha1']}.zip"
+        )
+    logger.info("Using source code location '%s'", deployment_package)
 
-    pipeline_arn = f"arn:aws:states:{region}:{service_account_id}:stateMachine:{contents_of_trigger_file['name_prefix']}-state-machine"
+    pipeline_arn = (
+        f"arn:aws:states:{region}:{service_account_id}:stateMachine:"
+        f"{trigger_file['pipeline_name']}"
+    )
+    if pipeline_arn not in state_machine_arns:
+        logger.error("Unexpected state machine ARN '%s'", state_machine_arns)
+        return
+
     execution_name = (
-        f"{contents_of_trigger_file['SHA']}-{time.strftime('%Y%m%d-%H%M%S')}"
+        f"{trigger_file['git_sha1']}-{time.strftime('%Y%m%d-%H%M%S')}"
     )
+
     execution_input = json.dumps(
         {
-            "content": s3_path_of_aws_repository_zip,
-            "cost_saving_mode": cost_saving_mode,
-            "toggling_cost_saving_mode": toggling_cost_saving_mode,
-        }
+            **trigger_file,
+            **(
+                {"eventbridge_input": eventbridge_input}
+                if len(eventbridge_input)
+                else {}
+            ),
+            "deployment_package": deployment_package,
+        },
+        sort_keys=True,
     )
-    start_pipeline_execution(pipeline_arn, execution_name, execution_input)
+    if triggered_by_ci:
+        rule = next(
+            (
+                rule
+                for rule in trigger_rules
+                if rule["state_machine_arn"] == pipeline_arn
+            ),
+            None,
+        )
+        if not rule:
+            logger.error(
+                "No trigger rule found for state machine '%s'", pipeline_arn
+            )
+            raise ValueError
+        else:
+            verified = verify_rule(
+                rule,
+                trigger_file["git_repo"],
+                trigger_file["git_branch"],
+            )
+            if not verified:
+                raise ValueError
+
+    client = boto3.client("stepfunctions")
+    client.start_execution(
+        stateMachineArn=pipeline_arn,
+        name=execution_name,
+        input=execution_input,
+    )
