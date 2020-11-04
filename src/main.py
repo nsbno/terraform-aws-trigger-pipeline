@@ -46,14 +46,13 @@ def extract_data_from_s3_key(s3_key):
     return groups
 
 
-def read_json_from_s3(s3_bucket, s3_key, s3_version_id=None, expected_keys=[]):
+def read_json_from_s3(s3_bucket, s3_key, s3_version_id=None):
     """Reads the content of a JSON file in S3.
 
     Args:
         s3_bucket: The name of the S3 bucket where the JSON file is located.
         s3_key: The S3 key of the JSON file.
         s3_version_id: Optional S3 object version.
-        expected_keys: The keys that are expected to be found inside the JSON file.
 
     Returns:
         The content of the JSON file converted to a Python dictionary.
@@ -61,7 +60,6 @@ def read_json_from_s3(s3_bucket, s3_key, s3_version_id=None, expected_keys=[]):
     Raises:
         Exception: Could not load S3 file as JSON.
         json.decoder.JSONDecodeError: Could not read file as JSON.
-        LookupError: Did not find expected keys in dictionary.
     """
     logger.debug(
         "Reading file 's3://%s/%s' (version '%s')",
@@ -94,14 +92,6 @@ def read_json_from_s3(s3_bucket, s3_key, s3_version_id=None, expected_keys=[]):
             body,
         )
         raise
-
-    if expected_keys and not all(key in content for key in expected_keys):
-        logger.error(
-            "Expected trigger event file to have keys '%s', but found '%s'",
-            expected_keys,
-            content.keys(),
-        )
-        raise LookupError
     return content
 
 
@@ -182,31 +172,36 @@ def lambda_handler(event, context):
         "deployment_repo",
     ]
 
-    try:
-        trigger_file = read_json_from_s3(
-            s3_bucket,
-            s3_key,
-            s3_version_id=s3_version_id,
-            expected_keys=required_keys,
+    trigger_file = read_json_from_s3(
+        s3_bucket,
+        s3_key,
+        s3_version_id=s3_version_id,
+    )
+
+    if not all(key in trigger_file for key in required_keys):
+        logger.warn(
+            "Expected trigger event file to have keys '%s', but found '%s'",
+            required_keys,
+            trigger_file.keys(),
         )
-    except LookupError:
         logger.warn("Trying to parse trigger file using legacy format")
-        legacy_trigger_file = read_json_from_s3(
-            s3_bucket,
-            s3_key,
-            s3_version_id=s3_version_id,
-            expected_keys=legacy_required_keys,
-        )
+        if not all(key in trigger_file for key in legacy_required_keys):
+            logger.error(
+                "Expected trigger event file to have keys '%s', but found '%s'",
+                legacy_required_keys,
+                trigger_file.keys(),
+            )
+            raise LookupError
         extracted_data = extract_data_from_s3_key(s3_key)
         trigger_file = {
             "git_owner": extracted_data["gh_org"],
             "git_repo": extracted_data["gh_repo"],
             "git_branch": extracted_data["gh_branch"],
             "git_user": None,
-            "git_sha1": legacy_trigger_file["SHA"],
-            "deployment_repo": legacy_trigger_file["aws_repo_name"],
+            "git_sha1": trigger_file["SHA"],
+            "deployment_repo": trigger_file["aws_repo_name"],
             "deployment_branch": "master",
-            "pipeline_name": f"{legacy_trigger_file['name_prefix']}-state-machine",
+            "pipeline_name": f"{trigger_file['name_prefix']}-state-machine",
         }
 
     s3_prefix = (
