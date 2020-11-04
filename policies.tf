@@ -30,7 +30,7 @@ data "aws_iam_policy_document" "logs_for_lambda" {
 data "aws_iam_policy_document" "s3_for_lambda" {
   statement {
     effect    = "Allow"
-    actions   = ["s3:GetObject"]
+    actions   = ["s3:GetObject", "s3:GetObjectVersion"]
     resources = ["${data.aws_s3_bucket.trigger_bucket.arn}/*"]
   }
 }

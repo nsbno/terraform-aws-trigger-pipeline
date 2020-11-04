@@ -46,12 +46,13 @@ def extract_data_from_s3_key(s3_key):
     return groups
 
 
-def read_json_from_s3(s3_bucket, s3_key, expected_keys=[]):
+def read_json_from_s3(s3_bucket, s3_key, s3_version_id=None, expected_keys=[]):
     """Reads the content of a JSON file in S3.
 
     Args:
         s3_bucket: The name of the S3 bucket where the JSON file is located.
         s3_key: The S3 key of the JSON file.
+        s3_version_id: Optional S3 object version.
         expected_keys: The keys that are expected to be found inside the JSON file.
 
     Returns:
@@ -63,14 +64,21 @@ def read_json_from_s3(s3_bucket, s3_key, expected_keys=[]):
         LookupError: Did not find expected keys in dictionary.
     """
     logger.debug(
-        "Reading file 's3://%s/%s",
+        "Reading file 's3://%s/%s' (version '%s')",
         s3_bucket,
         s3_key,
+        s3_version_id,
     )
     try:
         s3 = boto3.resource("s3")
         obj = s3.Object(s3_bucket, s3_key)
-        body = obj.get()["Body"].read().decode("utf-8")
+        body = (
+            obj.get(**({"VersionId": s3_version_id} if s3_version_id else {}))[
+                "Body"
+            ]
+            .read()
+            .decode("utf-8")
+        )
     except Exception:
         logger.exception(
             "Something went wrong when trying to download file 's3://%s/%s'",
@@ -147,6 +155,7 @@ def lambda_handler(event, context):
             raise ValueError
         s3_bucket = event["s3_bucket"]
         s3_key = event["s3_key"]
+        s3_version_id = None
         logger.info(
             "Path to trigger file was manually passed in to Lambda 's3://%s/%s'",
             s3_bucket,
@@ -157,6 +166,7 @@ def lambda_handler(event, context):
         triggered_by_ci = True
         s3_bucket = event["Records"][0]["s3"]["bucket"]["name"]
         s3_key = event["Records"][0]["s3"]["object"]["key"]
+        s3_version_id = event["Records"][0]["s3"]["object"]["versionId"]
         logger.info(
             "Lambda was triggered by file 's3://%s/%s'", s3_bucket, s3_key
         )
@@ -173,11 +183,19 @@ def lambda_handler(event, context):
     ]
 
     try:
-        trigger_file = read_json_from_s3(s3_bucket, s3_key, required_keys)
+        trigger_file = read_json_from_s3(
+            s3_bucket,
+            s3_key,
+            s3_version_id=s3_version_id,
+            expected_keys=required_keys,
+        )
     except LookupError:
         logger.warn("Trying to parse trigger file using legacy format")
         legacy_trigger_file = read_json_from_s3(
-            s3_bucket, s3_key, legacy_required_keys
+            s3_bucket,
+            s3_key,
+            s3_version_id=s3_version_id,
+            expected_keys=legacy_required_keys,
         )
         extracted_data = extract_data_from_s3_key(s3_key)
         trigger_file = {
