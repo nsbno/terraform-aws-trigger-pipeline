@@ -3,6 +3,7 @@ import boto3
 import time
 import logging
 import os
+import re
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -160,17 +161,36 @@ def lambda_handler(event, context):
             "Lambda was triggered by file 's3://%s/%s'", s3_bucket, s3_key
         )
 
+    legacy_required_keys = ["SHA", "date", "name_prefix", "aws_repo_name"]
     required_keys = [
         "git_owner",
         "git_repo",
         "git_branch",
-        "git_owner",
+        "git_user",
         "git_sha1",
         "pipeline_name",
         "deployment_repo",
     ]
 
-    trigger_file = read_json_from_s3(s3_bucket, s3_key, required_keys)
+    try:
+        trigger_file = read_json_from_s3(s3_bucket, s3_key, required_keys)
+    except LookupError:
+        logger.warn("Trying to parse trigger file using legacy format")
+        legacy_trigger_file = read_json_from_s3(
+            s3_bucket, s3_key, legacy_required_keys
+        )
+        extracted_data = extract_data_from_s3_key(s3_key)
+        trigger_file = {
+            "git_owner": extracted_data["gh_org"],
+            "git_repo": extracted_data["gh_repo"],
+            "git_branch": extracted_data["gh_branch"],
+            "git_user": None,
+            "git_sha1": legacy_trigger_file["SHA"],
+            "deployment_repo": legacy_trigger_file["aws_repo_name"],
+            "deployment_branch": "master",
+            "pipeline_name": f"{legacy_trigger_file['name_prefix']}-state-machine",
+        }
+
     s3_prefix = (
         f"{trigger_file['git_owner']}/{trigger_file['git_repo']}/branches/"
         f"{trigger_file['git_branch']}"
