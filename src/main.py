@@ -200,7 +200,9 @@ def lambda_handler(event, context):
             "git_user": None,
             "git_sha1": trigger_file["SHA"],
             "deployment_repo": trigger_file["aws_repo_name"],
-            "deployment_branch": "master",
+            "deployment_branch": extracted_data["gh_branch"]
+            if extracted_data["gh_repo"] == trigger_file["aws_repo_name"]
+            else "master",
             "pipeline_name": f"{trigger_file['name_prefix']}-state-machine",
         }
 
