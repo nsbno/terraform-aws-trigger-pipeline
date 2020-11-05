@@ -124,6 +124,37 @@ def verify_rule(rule, repo, branch):
     return True
 
 
+def get_parsed_trigger_file(
+    trigger_file, s3_key, expected_keys=[], legacy_keys=[]
+):
+    """Check that trigger file has the correct keys, and potentially
+    fall back to a legacy format if the first set of keys are not present"""
+    if all(key in trigger_file for key in expected_keys):
+        return trigger_file
+    elif all(key in trigger_file for key in legacy_keys):
+        logger.warn("Parsing trigger file using legacy format")
+        extracted_data = extract_data_from_s3_key(s3_key)
+        return {
+            "git_owner": extracted_data["gh_org"],
+            "git_repo": extracted_data["gh_repo"],
+            "git_branch": extracted_data["gh_branch"],
+            "git_user": None,
+            "git_sha1": trigger_file["SHA"],
+            "deployment_repo": trigger_file["aws_repo_name"],
+            "deployment_branch": extracted_data["gh_branch"]
+            if extracted_data["gh_repo"] == trigger_file["aws_repo_name"]
+            else "master",
+            "pipeline_name": f"{trigger_file['name_prefix']}-state-machine",
+        }
+    logger.error(
+        "Expected trigger event file to have keys '%s' or keys '%s', but found '%s'",
+        expected_keys,
+        legacy_keys,
+        trigger_file.keys(),
+    )
+    raise LookupError
+
+
 def lambda_handler(event, context):
     logger.info("Lambda started with input event '%s'", event)
 
@@ -161,7 +192,7 @@ def lambda_handler(event, context):
             "Lambda was triggered by file 's3://%s/%s'", s3_bucket, s3_key
         )
 
-    legacy_required_keys = ["SHA", "date", "name_prefix", "aws_repo_name"]
+    legacy_keys = ["SHA", "date", "name_prefix", "aws_repo_name"]
     required_keys = [
         "git_owner",
         "git_repo",
@@ -177,34 +208,9 @@ def lambda_handler(event, context):
         s3_key,
         s3_version_id=s3_version_id,
     )
-
-    if not all(key in trigger_file for key in required_keys):
-        logger.warn(
-            "Expected trigger event file to have keys '%s', but found '%s'",
-            required_keys,
-            trigger_file.keys(),
-        )
-        logger.warn("Trying to parse trigger file using legacy format")
-        if not all(key in trigger_file for key in legacy_required_keys):
-            logger.error(
-                "Expected trigger event file to have keys '%s', but found '%s'",
-                legacy_required_keys,
-                trigger_file.keys(),
-            )
-            raise LookupError
-        extracted_data = extract_data_from_s3_key(s3_key)
-        trigger_file = {
-            "git_owner": extracted_data["gh_org"],
-            "git_repo": extracted_data["gh_repo"],
-            "git_branch": extracted_data["gh_branch"],
-            "git_user": None,
-            "git_sha1": trigger_file["SHA"],
-            "deployment_repo": trigger_file["aws_repo_name"],
-            "deployment_branch": extracted_data["gh_branch"]
-            if extracted_data["gh_repo"] == trigger_file["aws_repo_name"]
-            else "master",
-            "pipeline_name": f"{trigger_file['name_prefix']}-state-machine",
-        }
+    trigger_file = get_parsed_trigger_file(
+        trigger_file, s3_key, required_keys, legacy_keys=legacy_keys
+    )
 
     s3_prefix = (
         f"{trigger_file['git_owner']}/{trigger_file['git_repo']}/branches/"
@@ -222,7 +228,9 @@ def lambda_handler(event, context):
                 f"{trigger_file['deployment_branch']}/"
                 f"{name_of_trigger_file}"
             ),
-            required_keys,
+        )
+        deployment_trigger_file = get_parsed_trigger_file(
+            deployment_trigger_file, required_keys, legacy_keys=legacy_keys
         )
         deployment_package = (
             f"{s3_bucket}/{trigger_file['git_owner']}/"
