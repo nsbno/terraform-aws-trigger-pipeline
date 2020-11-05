@@ -62,10 +62,10 @@ def read_json_from_s3(s3_bucket, s3_key, s3_version_id=None):
         json.decoder.JSONDecodeError: Could not read file as JSON.
     """
     logger.debug(
-        "Reading file 's3://%s/%s' (version '%s')",
+        "Reading file 's3://%s/%s' (%s)",
         s3_bucket,
         s3_key,
-        s3_version_id,
+        f"version '{s3_version_id}'" if s3_version_id else "latest version",
     )
     try:
         s3 = boto3.resource("s3")
