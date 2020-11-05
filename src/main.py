@@ -209,7 +209,10 @@ def lambda_handler(event, context):
         s3_version_id=s3_version_id,
     )
     trigger_file = get_parsed_trigger_file(
-        trigger_file, s3_key, required_keys, legacy_keys=legacy_keys
+        trigger_file,
+        s3_key,
+        expected_keys=required_keys,
+        legacy_keys=legacy_keys,
     )
 
     s3_prefix = (
@@ -220,17 +223,20 @@ def lambda_handler(event, context):
         f"s3://{s3_bucket}/{s3_prefix}/{trigger_file['git_sha1']}.zip"
     )
     if trigger_file["git_repo"] != trigger_file["deployment_repo"]:
+        deployment_s3_key = (
+            f"{trigger_file['git_owner']}/"
+            f"{trigger_file['deployment_repo']}/branches/"
+            f"{trigger_file['deployment_branch']}/"
+            f"{name_of_trigger_file}"
+        )
         deployment_trigger_file = read_json_from_s3(
-            s3_bucket,
-            (
-                f"{trigger_file['git_owner']}/"
-                f"{trigger_file['deployment_repo']}/branches/"
-                f"{trigger_file['deployment_branch']}/"
-                f"{name_of_trigger_file}"
-            ),
+            s3_bucket, deployment_s3_key
         )
         deployment_trigger_file = get_parsed_trigger_file(
-            deployment_trigger_file, required_keys, legacy_keys=legacy_keys
+            deployment_trigger_file,
+            deployment_s3_key,
+            expected_keys=required_keys,
+            legacy_keys=legacy_keys,
         )
         deployment_package = (
             f"{s3_bucket}/{trigger_file['git_owner']}/"
