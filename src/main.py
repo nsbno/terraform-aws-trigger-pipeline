@@ -239,7 +239,7 @@ def lambda_handler(event, context):
             legacy_keys=legacy_keys,
         )
         deployment_package = (
-            f"{s3_bucket}/{trigger_file['git_owner']}/"
+            f"s3://{s3_bucket}/{trigger_file['git_owner']}/"
             f"{trigger_file['deployment_repo']}/branches/"
             f"{trigger_file['deployment_branch']}/"
             f"{deployment_trigger_file['git_sha1']}.zip"
