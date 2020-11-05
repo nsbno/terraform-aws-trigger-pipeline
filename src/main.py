@@ -3,18 +3,56 @@ import boto3
 import time
 import logging
 import os
+import re
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 
-def read_json_from_s3(s3_bucket, s3_key, expected_keys=[]):
+def extract_data_from_s3_key(s3_key):
+    """Extracts various values from an S3 key.
+    Args:
+        s3_key: The S3 key of the file that triggered the pipeline.
+    Returns:
+        A dictionary containing the name of the GitHub organization, repository,
+        branch and S3 file, or an empty dictionary if none or only a subset
+        of these values could be extracted.
+    Raises:
+        ValueError: The input S3 key could not be reconstructed by using the
+            extracted values.
+    """
+    gh_org_symbols = r"\S+"
+    gh_repo_symbols = r"\S+"
+    gh_branch_symbols = r"\S+"
+    s3_filename_symbols = r"[a-zA-Z0-9_.-]+"
+    pattern = re.compile(
+        rf"(?P<gh_org>{gh_org_symbols})"
+        rf"/(?P<gh_repo>{gh_repo_symbols})"
+        rf"/branches"
+        rf"/(?P<gh_branch>{gh_branch_symbols})"
+        rf"/(?P<s3_filename>{s3_filename_symbols})$"
+    )
+    m = pattern.match(s3_key)
+    groups = m.groupdict() if m else {}
+    if groups:
+        reconstructed_s3_key = f"{groups['gh_org']}/{groups['gh_repo']}/branches/{groups['gh_branch']}/{groups['s3_filename']}"
+        if reconstructed_s3_key != s3_key:
+            logger.error(
+                "Reconstructed S3 key '%s' is not equal to original S3 key '%s'",
+                reconstructed_s3_key,
+                s3_key,
+            )
+            raise ValueError()
+    return groups
+
+
+def read_json_from_s3(s3_bucket, s3_key, s3_version_id=None):
     """Reads the content of a JSON file in S3.
 
     Args:
         s3_bucket: The name of the S3 bucket where the JSON file is located.
         s3_key: The S3 key of the JSON file.
-        expected_keys: The keys that are expected to be found inside the JSON file.
+        s3_version_id: Optional S3 object version.
 
     Returns:
         The content of the JSON file converted to a Python dictionary.
@@ -22,17 +60,23 @@ def read_json_from_s3(s3_bucket, s3_key, expected_keys=[]):
     Raises:
         Exception: Could not load S3 file as JSON.
         json.decoder.JSONDecodeError: Could not read file as JSON.
-        LookupError: Did not find expected keys in dictionary.
     """
     logger.debug(
-        "Reading file 's3://%s/%s",
+        "Reading file 's3://%s/%s' (%s)",
         s3_bucket,
         s3_key,
+        f"version '{s3_version_id}'" if s3_version_id else "latest version",
     )
     try:
         s3 = boto3.resource("s3")
         obj = s3.Object(s3_bucket, s3_key)
-        body = obj.get()["Body"].read().decode("utf-8")
+        body = (
+            obj.get(**({"VersionId": s3_version_id} if s3_version_id else {}))[
+                "Body"
+            ]
+            .read()
+            .decode("utf-8")
+        )
     except Exception:
         logger.exception(
             "Something went wrong when trying to download file 's3://%s/%s'",
@@ -48,14 +92,6 @@ def read_json_from_s3(s3_bucket, s3_key, expected_keys=[]):
             body,
         )
         raise
-
-    if expected_keys and not all(key in content for key in expected_keys):
-        logger.error(
-            "Expected trigger event file to have keys '%s', but found '%s'",
-            expected_keys,
-            content.keys(),
-        )
-        raise LookupError
     return content
 
 
@@ -88,6 +124,37 @@ def verify_rule(rule, repo, branch):
     return True
 
 
+def get_parsed_trigger_file(
+    trigger_file, s3_key, expected_keys=[], legacy_keys=[]
+):
+    """Check that trigger file has the correct keys, and potentially
+    fall back to a legacy format if the first set of keys are not present"""
+    if all(key in trigger_file for key in expected_keys):
+        return trigger_file
+    elif all(key in trigger_file for key in legacy_keys):
+        logger.warn("Parsing trigger file using legacy format")
+        extracted_data = extract_data_from_s3_key(s3_key)
+        return {
+            "git_owner": extracted_data["gh_org"],
+            "git_repo": extracted_data["gh_repo"],
+            "git_branch": extracted_data["gh_branch"],
+            "git_user": None,
+            "git_sha1": trigger_file["SHA"],
+            "deployment_repo": trigger_file["aws_repo_name"],
+            "deployment_branch": extracted_data["gh_branch"]
+            if extracted_data["gh_repo"] == trigger_file["aws_repo_name"]
+            else "master",
+            "pipeline_name": f"{trigger_file['name_prefix']}-state-machine",
+        }
+    logger.error(
+        "Expected trigger event file to have keys '%s' or keys '%s', but found '%s'",
+        expected_keys,
+        legacy_keys,
+        trigger_file.keys(),
+    )
+    raise LookupError
+
+
 def lambda_handler(event, context):
     logger.info("Lambda started with input event '%s'", event)
 
@@ -109,6 +176,7 @@ def lambda_handler(event, context):
             raise ValueError
         s3_bucket = event["s3_bucket"]
         s3_key = event["s3_key"]
+        s3_version_id = None
         logger.info(
             "Path to trigger file was manually passed in to Lambda 's3://%s/%s'",
             s3_bucket,
@@ -119,21 +187,34 @@ def lambda_handler(event, context):
         triggered_by_ci = True
         s3_bucket = event["Records"][0]["s3"]["bucket"]["name"]
         s3_key = event["Records"][0]["s3"]["object"]["key"]
+        s3_version_id = event["Records"][0]["s3"]["object"]["versionId"]
         logger.info(
             "Lambda was triggered by file 's3://%s/%s'", s3_bucket, s3_key
         )
 
+    legacy_keys = ["SHA", "date", "name_prefix", "aws_repo_name"]
     required_keys = [
         "git_owner",
         "git_repo",
         "git_branch",
-        "git_owner",
+        "git_user",
         "git_sha1",
         "pipeline_name",
         "deployment_repo",
     ]
 
-    trigger_file = read_json_from_s3(s3_bucket, s3_key, required_keys)
+    trigger_file = read_json_from_s3(
+        s3_bucket,
+        s3_key,
+        s3_version_id=s3_version_id,
+    )
+    trigger_file = get_parsed_trigger_file(
+        trigger_file,
+        s3_key,
+        expected_keys=required_keys,
+        legacy_keys=legacy_keys,
+    )
+
     s3_prefix = (
         f"{trigger_file['git_owner']}/{trigger_file['git_repo']}/branches/"
         f"{trigger_file['git_branch']}"
@@ -142,18 +223,23 @@ def lambda_handler(event, context):
         f"s3://{s3_bucket}/{s3_prefix}/{trigger_file['git_sha1']}.zip"
     )
     if trigger_file["git_repo"] != trigger_file["deployment_repo"]:
+        deployment_s3_key = (
+            f"{trigger_file['git_owner']}/"
+            f"{trigger_file['deployment_repo']}/branches/"
+            f"{trigger_file['deployment_branch']}/"
+            f"{name_of_trigger_file}"
+        )
         deployment_trigger_file = read_json_from_s3(
-            s3_bucket,
-            (
-                f"{trigger_file['git_owner']}/"
-                f"{trigger_file['deployment_repo']}/branches/"
-                f"{trigger_file['deployment_branch']}/"
-                f"{name_of_trigger_file}"
-            ),
-            required_keys,
+            s3_bucket, deployment_s3_key
+        )
+        deployment_trigger_file = get_parsed_trigger_file(
+            deployment_trigger_file,
+            deployment_s3_key,
+            expected_keys=required_keys,
+            legacy_keys=legacy_keys,
         )
         deployment_package = (
-            f"{s3_bucket}/{trigger_file['git_owner']}/"
+            f"s3://{s3_bucket}/{trigger_file['git_owner']}/"
             f"{trigger_file['deployment_repo']}/branches/"
             f"{trigger_file['deployment_branch']}/"
             f"{deployment_trigger_file['git_sha1']}.zip"
