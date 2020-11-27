@@ -127,8 +127,9 @@ def verify_rule(rule, repo, branch):
 def get_parsed_trigger_file(
     trigger_file, s3_key, expected_keys=[], legacy_keys=[]
 ):
-    """Check that trigger file has the correct keys, and potentially
-    fall back to a legacy format if the first set of keys are not present"""
+    """Check that trigger file has the correct keys, add default values,
+    and potentially fall back to a legacy format if the first set of
+    keys are not present"""
     if all(key in trigger_file for key in expected_keys):
         return {
             "deployment_repo": trigger_file["git_repo"],
