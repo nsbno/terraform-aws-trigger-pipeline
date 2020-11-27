@@ -130,7 +130,11 @@ def get_parsed_trigger_file(
     """Check that trigger file has the correct keys, and potentially
     fall back to a legacy format if the first set of keys are not present"""
     if all(key in trigger_file for key in expected_keys):
-        return trigger_file
+        return {
+            "deployment_repo": trigger_file["git_repo"],
+            "deployment_branch": trigger_file["git_branch"],
+            **trigger_file,
+        }
     elif all(key in trigger_file for key in legacy_keys):
         logger.warn("Parsing trigger file using legacy format")
         extracted_data = extract_data_from_s3_key(s3_key)
@@ -200,7 +204,6 @@ def lambda_handler(event, context):
         "git_user",
         "git_sha1",
         "pipeline_name",
-        "deployment_repo",
     ]
 
     trigger_file = read_json_from_s3(
