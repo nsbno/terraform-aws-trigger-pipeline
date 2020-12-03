@@ -226,6 +226,7 @@ def lambda_handler(event, context):
     deployment_package = (
         f"s3://{s3_bucket}/{s3_prefix}/{trigger_file['git_sha1']}.zip"
     )
+    deployment_package_sha1 = trigger_file["git_sha1"]
     if trigger_file["git_repo"] != trigger_file["deployment_repo"]:
         deployment_s3_key = (
             f"{trigger_file['git_owner']}/"
@@ -248,6 +249,7 @@ def lambda_handler(event, context):
             f"{trigger_file['deployment_branch']}/"
             f"{deployment_trigger_file['git_sha1']}.zip"
         )
+        deployment_package_sha1 = deployment_trigger_file["git_sha1"]
     logger.info("Using source code location '%s'", deployment_package)
 
     pipeline_arn = (
@@ -259,7 +261,7 @@ def lambda_handler(event, context):
         return
 
     execution_name = (
-        f"{trigger_file['git_sha1']}-{time.strftime('%Y%m%d-%H%M%S')}"
+        f"{deployment_package_sha1}-{time.strftime('%Y%m%d-%H%M%S')}"
     )
 
     execution_input = json.dumps(
