@@ -273,6 +273,7 @@ def lambda_handler(event, context):
                 else {}
             ),
             "deployment_package": deployment_package,
+            "content": deployment_package,
         },
         sort_keys=True,
     )
