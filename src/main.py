@@ -192,7 +192,9 @@ def lambda_handler(event, context):
         triggered_by_ci = True
         s3_bucket = event["Records"][0]["s3"]["bucket"]["name"]
         s3_key = event["Records"][0]["s3"]["object"]["key"]
-        s3_version_id = event["Records"][0]["s3"]["object"]["versionId"]
+        s3_version_id = event["Records"][0]["s3"]["object"].get(
+            "versionId", None
+        )
         logger.info(
             "Lambda was triggered by file 's3://%s/%s'", s3_bucket, s3_key
         )
