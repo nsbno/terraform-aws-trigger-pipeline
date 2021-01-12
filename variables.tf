@@ -5,7 +5,7 @@ variable "name_prefix" {
 
 variable "allowed_branches" {
   description = "The branches that are allowed to trigger an AWS Step Functions pipeline (NOTE: Rules specified in `var.trigger_rules` will override this for the pipelines in question)."
-  default     = ["master"]
+  default     = ["master", "main"]
 }
 
 variable "trigger_rules" {
