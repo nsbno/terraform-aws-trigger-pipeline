@@ -2,14 +2,19 @@ data "aws_caller_identity" "current-account" {}
 data "aws_region" "current" {}
 
 locals {
-  current_account_id        = data.aws_caller_identity.current-account.account_id
-  current_region            = data.aws_region.current.name
-  name_of_trigger_file      = "trigger-event.json"
-  trigger_rules_by_pipeline = var.trigger_rules == null ? {} : { for obj in var.trigger_rules : obj.state_machine_arn => obj }
+  current_account_id   = data.aws_caller_identity.current-account.account_id
+  current_region       = data.aws_region.current.name
+  allowed_repositories = ["*"]
+  name_of_trigger_file = "trigger-event.json"
+  trigger_rules_by_pipeline = var.trigger_rules == [] ? {} : { for obj in var.trigger_rules : obj.state_machine_arn => {
+    state_machine_arn    = obj.state_machine_arn
+    allowed_branches     = lookup(obj, "allowed_branches", var.allowed_branches)
+    allowed_repositories = lookup(obj, "allowed_repositories", local.allowed_repositories)
+  } }
   trigger_rules = [for arn in var.state_machine_arns : lookup(local.trigger_rules_by_pipeline, arn, {
     state_machine_arn    = arn
     allowed_branches     = var.allowed_branches
-    allowed_repositories = ["*"]
+    allowed_repositories = local.allowed_repositories
   })]
 }
 
