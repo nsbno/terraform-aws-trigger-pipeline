@@ -13,10 +13,21 @@ locals {
   })]
 }
 
-data "archive_file" "lambda_infra_trigger_pipeline_src" {
-  type        = "zip"
-  source_file = "${path.module}/src/main.py"
-  output_path = "${path.module}/src/main.zip"
+data "archive_file" "this" {
+  type = "zip"
+  source {
+    filename = "main.py"
+    content  = file("${path.module}/src/main.py")
+  }
+  source {
+    filename = "config.json"
+    content = jsonencode({
+      name_of_trigger_file = local.name_of_trigger_file
+      trigger_rules        = local.trigger_rules
+      current_account_id   = local.current_account_id
+    })
+  }
+  output_path = "${path.module}/.terraform_artifacts/source.zip"
 }
 
 resource "aws_lambda_function" "infra_trigger_pipeline" {
@@ -24,17 +35,10 @@ resource "aws_lambda_function" "infra_trigger_pipeline" {
   handler          = "main.lambda_handler"
   role             = aws_iam_role.lambda_infra_trigger_pipeline_exec.arn
   runtime          = "python3.7"
-  filename         = data.archive_file.lambda_infra_trigger_pipeline_src.output_path
-  source_code_hash = filebase64sha256(data.archive_file.lambda_infra_trigger_pipeline_src.output_path)
-  environment {
-    variables = {
-      CURRENT_ACCOUNT_ID   = local.current_account_id
-      TRIGGER_RULES        = jsonencode(local.trigger_rules)
-      NAME_OF_TRIGGER_FILE = local.name_of_trigger_file
-    }
-  }
-  timeout = var.lambda_timeout
-  tags    = var.tags
+  filename         = data.archive_file.this.output_path
+  source_code_hash = filebase64sha256(data.archive_file.this.output_path)
+  timeout          = var.lambda_timeout
+  tags             = var.tags
 }
 
 resource "aws_lambda_function_event_invoke_config" "this" {

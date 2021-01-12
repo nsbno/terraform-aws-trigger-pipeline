@@ -8,6 +8,11 @@ import re
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
+# Read config file outside Lambda handler to allow reuse
+# between executions
+with open("config.json") as f:
+    CONFIG = json.load(f)
+
 
 def extract_data_from_s3_key(s3_key):
     """Extracts various values from an S3 key.
@@ -162,11 +167,10 @@ def get_parsed_trigger_file(
 
 def lambda_handler(event, context):
     logger.info("Lambda started with input event '%s'", event)
-
-    trigger_rules = json.loads(os.environ["TRIGGER_RULES"])
-    name_of_trigger_file = os.environ["NAME_OF_TRIGGER_FILE"]
+    trigger_rules = CONFIG["trigger_rules"]
+    name_of_trigger_file = CONFIG["name_of_trigger_file"]
+    service_account_id = CONFIG["current_account_id"]
     region = os.environ["AWS_REGION"]
-    service_account_id = os.environ["CURRENT_ACCOUNT_ID"]
     state_machine_arns = list(
         map(lambda rule: rule["state_machine_arn"], trigger_rules)
     )
