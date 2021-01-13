@@ -41,7 +41,7 @@ resource "aws_lambda_function" "infra_trigger_pipeline" {
   role             = aws_iam_role.lambda_infra_trigger_pipeline_exec.arn
   runtime          = "python3.7"
   filename         = data.archive_file.this.output_path
-  source_code_hash = filebase64sha256(data.archive_file.this.output_path)
+  source_code_hash = data.archive_file.this.output_base64sha256
   timeout          = var.lambda_timeout
   tags             = var.tags
 }
