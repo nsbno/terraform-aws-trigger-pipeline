@@ -262,9 +262,6 @@ def lambda_handler(event, context):
         f"arn:aws:states:{region}:{service_account_id}:stateMachine:"
         f"{trigger_file['pipeline_name']}"
     )
-    if pipeline_arn not in state_machine_arns:
-        logger.error("Unexpected state machine ARN '%s'", state_machine_arns)
-        return
 
     execution_name = (
         f"{deployment_package_sha1}-{time.strftime('%Y%m%d-%H%M%S')}"
@@ -293,10 +290,9 @@ def lambda_handler(event, context):
             None,
         )
         if not rule:
-            logger.error(
+            logger.warn(
                 "No trigger rule found for state machine '%s'", pipeline_arn
             )
-            raise ValueError
         else:
             verified = verify_rule(
                 rule,
