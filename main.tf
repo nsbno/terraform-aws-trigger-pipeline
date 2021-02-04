@@ -2,21 +2,37 @@ data "aws_caller_identity" "current-account" {}
 data "aws_region" "current" {}
 
 locals {
-  current_account_id        = data.aws_caller_identity.current-account.account_id
-  current_region            = data.aws_region.current.name
-  name_of_trigger_file      = "trigger-event.json"
-  trigger_rules_by_pipeline = var.trigger_rules == null ? {} : { for obj in var.trigger_rules : obj.state_machine_arn => obj }
+  current_account_id   = data.aws_caller_identity.current-account.account_id
+  current_region       = data.aws_region.current.name
+  allowed_repositories = ["*"]
+  name_of_trigger_file = "trigger-event.json"
+  trigger_rules_by_pipeline = var.trigger_rules == [] ? {} : { for obj in var.trigger_rules : obj.state_machine_arn => {
+    state_machine_arn    = obj.state_machine_arn
+    allowed_branches     = lookup(obj, "allowed_branches", var.allowed_branches)
+    allowed_repositories = lookup(obj, "allowed_repositories", local.allowed_repositories)
+  } }
   trigger_rules = [for arn in var.state_machine_arns : lookup(local.trigger_rules_by_pipeline, arn, {
     state_machine_arn    = arn
     allowed_branches     = var.allowed_branches
-    allowed_repositories = ["*"]
+    allowed_repositories = local.allowed_repositories
   })]
 }
 
-data "archive_file" "lambda_infra_trigger_pipeline_src" {
-  type        = "zip"
-  source_file = "${path.module}/src/main.py"
-  output_path = "${path.module}/src/main.zip"
+data "archive_file" "this" {
+  type = "zip"
+  source {
+    filename = "main.py"
+    content  = file("${path.module}/src/main.py")
+  }
+  source {
+    filename = "config.json"
+    content = jsonencode({
+      name_of_trigger_file = local.name_of_trigger_file
+      trigger_rules        = local.trigger_rules
+      current_account_id   = local.current_account_id
+    })
+  }
+  output_path = "${path.module}/.terraform_artifacts/source.zip"
 }
 
 resource "aws_lambda_function" "infra_trigger_pipeline" {
@@ -24,17 +40,10 @@ resource "aws_lambda_function" "infra_trigger_pipeline" {
   handler          = "main.lambda_handler"
   role             = aws_iam_role.lambda_infra_trigger_pipeline_exec.arn
   runtime          = "python3.7"
-  filename         = data.archive_file.lambda_infra_trigger_pipeline_src.output_path
-  source_code_hash = filebase64sha256(data.archive_file.lambda_infra_trigger_pipeline_src.output_path)
-  environment {
-    variables = {
-      CURRENT_ACCOUNT_ID   = local.current_account_id
-      TRIGGER_RULES        = jsonencode(local.trigger_rules)
-      NAME_OF_TRIGGER_FILE = local.name_of_trigger_file
-    }
-  }
-  timeout = var.lambda_timeout
-  tags    = var.tags
+  filename         = data.archive_file.this.output_path
+  source_code_hash = data.archive_file.this.output_base64sha256
+  timeout          = var.lambda_timeout
+  tags             = var.tags
 }
 
 resource "aws_lambda_function_event_invoke_config" "this" {
