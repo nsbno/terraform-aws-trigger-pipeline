@@ -168,12 +168,10 @@ def get_parsed_trigger_file(
 def lambda_handler(event, context):
     logger.info("Lambda started with input event '%s'", event)
     trigger_rules = CONFIG["trigger_rules"]
+    default_trigger_rule = CONFIG["default_trigger_rule"]
     name_of_trigger_file = CONFIG["name_of_trigger_file"]
     service_account_id = CONFIG["current_account_id"]
     region = os.environ["AWS_REGION"]
-    state_machine_arns = list(
-        map(lambda rule: rule["state_machine_arn"], trigger_rules)
-    )
 
     eventbridge_input = {}
     if event.get("eventbridge_rule", False):
@@ -291,16 +289,17 @@ def lambda_handler(event, context):
         )
         if not rule:
             logger.warn(
-                "No trigger rule found for state machine '%s'", pipeline_arn
+                "No trigger rule found for state machine '%s', so using default rule",
+                pipeline_arn,
             )
-        else:
-            verified = verify_rule(
-                rule,
-                trigger_file["git_repo"],
-                trigger_file["git_branch"],
-            )
-            if not verified:
-                raise ValueError
+            rule = default_trigger_rule
+        verified = verify_rule(
+            rule,
+            f"{trigger_file['git_owner']}/{trigger_file['git_repo']}",
+            trigger_file["git_branch"],
+        )
+        if not verified:
+            raise ValueError
 
     client = boto3.client("stepfunctions")
     client.start_execution(
