@@ -4,8 +4,13 @@ variable "name_prefix" {
 }
 
 variable "allowed_branches" {
-  description = "The branches that are allowed to trigger an AWS Step Functions pipeline (NOTE: Rules specified in `var.trigger_rules` will override this for the pipelines in question)."
+  description = "A list of GitHub branches that are allowed to trigger an AWS Step Functions pipeline. A single wildcard item can be used to signify all. (NOTE: Rules specified in `var.trigger_rules` will override this for the pipelines in question)."
   default     = ["master", "main"]
+}
+
+variable "allowed_repositories" {
+  description = "A list of GitHub repositories (e.g., `nsbno/my-repository`) that are allowed to trigger an AWS Step Functions pipeline. A single wildcard item can be used to signify all. (NOTE: Rules specified in `var.trigger_rules` will override this for the pipelines in question)."
+  default     = ["*"]
 }
 
 variable "trigger_rules" {
@@ -13,11 +18,11 @@ variable "trigger_rules" {
 An optional list of objects that describe which branches and repositories are allowed to trigger an AWS Step Functions state machine.
 
 Object fields:
-state_machine_arn: The ARN of the state machine that the rule is valid for.
+state_machine_arn: The ARN (without wildcards) of the state machine that the rule is valid for.
 allowed_branches: Optional list of branches that can trigger the state machine (defaults to the value of `var.allowed_branches`). A single wildcard item can be used to signify all.
 allowed_repositories: Optional list of GitHub repositories that can trigger the state machine (defaults to ["*"]). A single wildcard item can be used to signify all.
 DOC
-  type        = list
+  type        = list(any)
   default     = []
 }
 

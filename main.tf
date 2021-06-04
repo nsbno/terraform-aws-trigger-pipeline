@@ -4,17 +4,20 @@ data "aws_region" "current" {}
 locals {
   current_account_id   = data.aws_caller_identity.current-account.account_id
   current_region       = data.aws_region.current.name
-  allowed_repositories = ["*"]
   name_of_trigger_file = "trigger-event.json"
+  default_trigger_rule = {
+    allowed_branches     = var.allowed_branches
+    allowed_repositories = var.allowed_repositories
+  }
   trigger_rules_by_pipeline = var.trigger_rules == [] ? {} : { for obj in var.trigger_rules : obj.state_machine_arn => {
     state_machine_arn    = obj.state_machine_arn
     allowed_branches     = lookup(obj, "allowed_branches", var.allowed_branches)
-    allowed_repositories = lookup(obj, "allowed_repositories", local.allowed_repositories)
+    allowed_repositories = lookup(obj, "allowed_repositories", var.allowed_repositories)
   } }
   trigger_rules = [for arn in var.state_machine_arns : lookup(local.trigger_rules_by_pipeline, arn, {
     state_machine_arn    = arn
     allowed_branches     = var.allowed_branches
-    allowed_repositories = local.allowed_repositories
+    allowed_repositories = var.allowed_repositories
   })]
 }
 
@@ -28,6 +31,7 @@ data "archive_file" "this" {
     filename = "config.json"
     content = jsonencode({
       name_of_trigger_file = local.name_of_trigger_file
+      default_trigger_rule = local.default_trigger_rule
       trigger_rules        = local.trigger_rules
       current_account_id   = local.current_account_id
     })
@@ -93,4 +97,3 @@ resource "aws_iam_role_policy" "stepfunctions_to_lambda" {
   policy = data.aws_iam_policy_document.stepfunctions_for_lambda.json
   role   = aws_iam_role.lambda_infra_trigger_pipeline_exec.id
 }
-
