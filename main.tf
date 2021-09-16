@@ -11,9 +11,10 @@ locals {
   }
   trigger_rules_by_pipeline = var.trigger_rules == [] ? {} : { for obj in var.trigger_rules : obj.state_machine_arn => {
     state_machine_arn    = obj.state_machine_arn
-    allowed_branches     = lookup(obj, "allowed_branches", var.allowed_branches)
-    allowed_repositories = lookup(obj, "allowed_repositories", var.allowed_repositories)
-  } }
+    allowed_branches     = obj.allowed_branches
+    allowed_repositories = obj.allowed_repositories
+    }
+  }
   trigger_rules = [for arn in var.state_machine_arns : lookup(local.trigger_rules_by_pipeline, arn, {
     state_machine_arn    = arn
     allowed_branches     = var.allowed_branches
